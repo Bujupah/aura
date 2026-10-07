@@ -52,6 +52,7 @@ fn on_menu_event(app: &AppHandle, id: &str) {
         "click_through" => ShellCommand::ToggleClickThrough,
         "topics" => ShellCommand::ToggleTopics,
         "palette" => ShellCommand::TogglePalette,
+        "tokens" => return crate::tokens::open_window(app),
         "quit" => return app.exit(0),
         _ => {
             change_setting(app, id);
@@ -106,6 +107,8 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         Ok(menu)
     };
 
+    // While hidden, only restoring is honoured; the menu should not offer more.
+    let usable = !shell.hidden;
     let same_language = settings.my_language == settings.meeting_language;
     let translation = Submenu::with_id(
         app,
@@ -168,8 +171,6 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &item("label:agent_note", "Changes apply from the next session", false)?,
     ])?;
 
-    // While hidden, only restoring is honoured; the menu should not offer more.
-    let usable = !shell.hidden;
     Menu::with_items(
         app,
         &[
@@ -184,6 +185,7 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             )?,
             &translation,
             &agent,
+            &item("tokens", "API Tokens…", usable)?,
             &separator()?,
             &item(
                 "hidden",

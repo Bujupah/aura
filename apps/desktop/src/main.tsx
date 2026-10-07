@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Overlay } from "./overlay/Overlay";
 import { Palette } from "./palette/Palette";
 import { createShellBridge } from "./shell/bridge";
+import { TokensWindow } from "./tokens/TokensWindow";
 import { TopicWindow } from "./topics/TopicWindow";
 import "./styles.css";
 
@@ -21,6 +22,8 @@ createRoot(root).render(
       <Suspense fallback={null}>
         <Gallery />
       </Suspense>
+    ) : bridge.windowKind === "tokens" ? (
+      <TokensWindow bridge={bridge} />
     ) : bridge.windowKind === "palette" ? (
       <Palette bridge={bridge} />
     ) : bridge.windowKind === "topic" && bridge.topicId !== null ? (

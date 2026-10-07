@@ -24,7 +24,7 @@ flowchart TB
 
 Three rules hold the design together:
 
-1. **The webview is presentation only.** It never holds a secret, never talks to the network, and never touches audio. Its only capability is a small typed IPC surface.
+1. **The webview is presentation only.** It never talks to the network and never touches audio, and no secret is ever sent to it: the token window can submit a token for the core to store in the Keychain, but nothing returns one. Its only capability is a small typed IPC surface.
 2. **Everything meaningful is a typed event.** UI, storage, replay and evaluation all consume the same event log. Nothing renders a model response directly.
 3. **The model proposes; the core decides.** Authorization, verification state and what reaches the screen are decided in deterministic code.
 

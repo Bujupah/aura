@@ -659,3 +659,97 @@ li[data-kind="web"] > .note-text {
     transition: background-color 80ms;
   }
 }
+
+/* ── API tokens window ───────────────────────────────────── */
+
+/* An ordinary opaque window, unlike the floating panels. */
+html[data-window="tokens"],
+html[data-window="tokens"] body,
+html[data-window="tokens"] #root {
+  background: var(--surface-solid);
+}
+
+.tokens {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  font-size: 13px;
+}
+
+.tokens > p {
+  color: var(--text-muted);
+}
+
+.token-row {
+  display: grid;
+  gap: 6px;
+}
+
+.token-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.token-head label {
+  font-weight: 600;
+}
+
+.token-source {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.token-source[data-source="none"] {
+  color: var(--warning);
+}
+
+.token-source[data-source="keychain"] {
+  color: var(--accent);
+}
+
+.token-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.token-controls input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.token-controls input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.token-controls .action {
+  height: 28px;
+}
+
+.token-controls .action:disabled {
+  opacity: 0.45;
+}
+
+.token-message {
+  min-height: 16px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.token-message[data-tone="error"] {
+  color: var(--warning);
+}

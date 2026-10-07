@@ -27,7 +27,7 @@ export interface ShortcutBinding {
   readonly registered: boolean;
 }
 
-export type WindowKind = "overlay" | "palette" | "topic" | "gallery";
+export type WindowKind = "overlay" | "palette" | "topic" | "gallery" | "tokens";
 
 // Mirrors `aura_session` and `aura_core::transcript`.
 
@@ -102,4 +102,15 @@ export interface Settings {
   readonly translateMyVoice: boolean;
   readonly webAccess: boolean;
   readonly illustrations: boolean;
+}
+
+// Mirrors `tokens`. A token's value never comes back from the core; only
+// where the one in use comes from.
+
+export type Provider = "openai" | "gemini";
+export type TokenSource = "keychain" | "environment" | "none";
+
+export interface TokenStatus {
+  readonly openai: TokenSource;
+  readonly gemini: TokenSource;
 }

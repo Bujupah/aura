@@ -56,7 +56,7 @@ flowchart LR
 
 Three rules shape the code:
 
-1. **The webview only presents.** It never holds a secret, touches audio, or talks to the network.
+1. **The webview only presents.** It never touches audio or talks to the network, and it is never sent a secret: a token can be typed into the app, but nothing reads one back out.
 2. **The model proposes; the core decides.** Model output is schema-constrained and then validated in plain Rust — evidence for every note, a real search result behind every web claim, a layout that always fits the screen.
 3. **Nothing is claimed that the platform cannot guarantee.** See [Privacy and limits](#privacy-and-limits).
 
@@ -86,7 +86,7 @@ OPENAI_API_TOKEN=...
 GEMINI_API_TOKEN=...
 ```
 
-The Gemini token is only needed for translation.
+The Gemini token is only needed for translation. You can also enter or replace either token in the app, under **menu bar → API Tokens…**; a token saved there is kept in your Keychain and takes precedence over `.env`.
 
 ```bash
 pnpm dev
@@ -149,15 +149,7 @@ The build is not notarized, so on the other Mac clear its download flag after mo
 xattr -dr com.apple.quarantine /Applications/Aura.app
 ```
 
-The packaged app contains no tokens. It reads them from the Keychain; each command prompts for the token without showing it:
-
-```bash
-security add-generic-password -U -s dev.aura.desktop -a OPENAI_API_TOKEN -w
-```
-
-```bash
-security add-generic-password -U -s dev.aura.desktop -a GEMINI_API_TOKEN -w
-```
+The packaged app contains no tokens. Open **menu bar → API Tokens…** and paste yours; they are saved to that Mac's Keychain and used from the next time you start listening. The window can save or remove a token but never displays one.
 
 ## Privacy and limits
 

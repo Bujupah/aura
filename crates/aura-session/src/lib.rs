@@ -132,11 +132,7 @@ pub enum SessionError {
     Live(#[from] LiveError),
     #[error(transparent)]
     Translate(#[from] TranslateError),
-    #[error(
-        "Translation needs a Gemini token. Add one to your Keychain by running this in Terminal, then \
-         start again:  security add-generic-password -U -s dev.aura.desktop -a {} -w",
-        aura_translate::API_TOKEN_ENV
-    )]
+    #[error("Translation needs a Gemini token. Add one from the menu bar: API Tokens…")]
     NoTranslationCredential,
     #[error("the audio output for translated speech could not be opened")]
     AudioOutput,

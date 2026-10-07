@@ -4,6 +4,7 @@ mod meeting;
 mod settings;
 mod shell;
 mod shortcuts;
+mod tokens;
 mod topics;
 mod tray;
 mod windows;
@@ -63,6 +64,10 @@ pub fn run() {
             topics::topic_dismiss,
             topics::topic_image,
             settings::settings_get,
+            tokens::tokens_status,
+            tokens::token_set,
+            tokens::token_clear,
+            tokens::tokens_open,
         ])
         .setup(|app| {
             // Menu-bar app: no Dock icon, and showing a panel never pulls the

@@ -4,10 +4,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   ListeningState,
   MeetingEvent,
+  Provider,
   Settings,
   ShellCommand,
   ShellState,
   ShortcutBinding,
+  TokenStatus,
   Topic,
   WindowKind,
 } from "./types";
@@ -32,6 +34,11 @@ export interface ShellBridge {
   getTopicImage(id: string): Promise<string | null>;
   getSettings(): Promise<Settings>;
   subscribeSettings(listener: (settings: Settings) => void): () => void;
+  openTokens(): Promise<void>;
+  getTokenStatus(): Promise<TokenStatus>;
+  /** Rejects with a message the user can act on. */
+  setToken(provider: Provider, value: string): Promise<TokenStatus>;
+  clearToken(provider: Provider): Promise<TokenStatus>;
 }
 
 const STATE_EVENT = "shell://state";
@@ -41,7 +48,7 @@ const SETTINGS_EVENT = "settings://changed";
 const TOPIC_PREFIX = "topic-";
 
 function windowKind(label: string | null): WindowKind {
-  if (label === "palette") return "palette";
+  if (label === "palette" || label === "tokens") return label;
   return label?.startsWith(TOPIC_PREFIX) ? "topic" : "overlay";
 }
 
@@ -76,6 +83,10 @@ function tauriBridge(): ShellBridge {
       if (bytes.byteLength === 0) return null;
       return URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
     },
+    openTokens: () => invoke<void>("tokens_open"),
+    getTokenStatus: () => invoke<TokenStatus>("tokens_status"),
+    setToken: (provider, value) => invoke<TokenStatus>("token_set", { provider, value }),
+    clearToken: (provider) => invoke<TokenStatus>("token_clear", { provider }),
     getSettings: () => invoke<Settings>("settings_get"),
     subscribeSettings(listener) {
       const unlisten = listen<Settings>(SETTINGS_EVENT, (event) => listener(event.payload));
@@ -105,6 +116,7 @@ function browserBridge(): ShellBridge {
   };
   const listeners = new Set<(state: ShellState) => void>();
   const meetingListeners = new Set<(event: MeetingEvent) => void>();
+  let tokenStatus: TokenStatus = { openai: "environment", gemini: "none" };
   let listening: ListeningState = { status: "idle" };
   let timers: number[] = [];
 
@@ -149,6 +161,17 @@ function browserBridge(): ShellBridge {
         illustrations: true,
       }),
     subscribeSettings: () => () => undefined,
+    openTokens: () => Promise.resolve(),
+    getTokenStatus: () => Promise.resolve(tokenStatus),
+    setToken(provider, value) {
+      if (value.trim() === "") return Promise.reject("Enter a token first.");
+      tokenStatus = { ...tokenStatus, [provider]: "keychain" };
+      return Promise.resolve(tokenStatus);
+    },
+    clearToken(provider) {
+      tokenStatus = { ...tokenStatus, [provider]: provider === "openai" ? "environment" : "none" };
+      return Promise.resolve(tokenStatus);
+    },
     getState: () => Promise.resolve(state),
     getShortcuts: () =>
       Promise.resolve([

@@ -4,7 +4,6 @@
 
 use std::sync::{Mutex, PoisonError};
 
-use aura_live::ApiCredential;
 use aura_session::{
     AudioInput, Credentials, FailureReason, Incoming, ListeningState, MeetingSession, SessionEvent,
     SessionOptions, Translation,
@@ -13,6 +12,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc;
 
 use crate::settings::{IncomingTranslation, Settings, SettingsStore};
+use crate::tokens::{self, Provider};
 use crate::{topics, tray};
 
 pub const EVENT: &str = "meeting://event";
@@ -180,45 +180,19 @@ fn emit(app: &AppHandle, event: &SessionEvent) {
     }
 }
 
-/// The Keychain service under which Aura's tokens are stored, one item per
-/// token, with the token's name as the account.
-const KEYCHAIN_SERVICE: &str = "dev.aura.desktop";
-
 fn credentials() -> Result<Credentials, String> {
-    // Developers keep the tokens in the repository's gitignored `.env`.
-    // Release builds never read it.
+    // Developers keep tokens in the repository's gitignored `.env`. Release
+    // builds never read it. A token entered in the app wins over either.
     #[cfg(debug_assertions)]
     let _ = dotenvy::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../.env"));
 
-    let openai = token(aura_live::API_TOKEN_ENV).ok_or_else(|| {
-        format!(
-            "Aura has no OpenAI token. Add one to your Keychain by running this in Terminal, then \
-             start again:  security add-generic-password -U -s {KEYCHAIN_SERVICE} -a {} -w",
-            aura_live::API_TOKEN_ENV
-        )
-    })?;
     Ok(Credentials {
-        openai,
+        openai: tokens::resolve(Provider::Openai)
+            .ok_or("Aura has no OpenAI token. Add one from the menu bar: API Tokens…")?,
         // Only translation needs it; its absence is reported if translation
         // is actually switched on.
-        gemini: token(aura_translate::API_TOKEN_ENV),
+        gemini: tokens::resolve(Provider::Gemini),
     })
-}
-
-/// A token from the environment or, failing that, the macOS Keychain. Until
-/// the gateway issues short-lived credentials, the Keychain is where a token
-/// lives on a machine that has no development checkout.
-fn token(name: &'static str) -> Option<ApiCredential> {
-    if let Ok(credential) = ApiCredential::from_env_var(name) {
-        return Some(credential);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let secret = security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, name).ok()?;
-        ApiCredential::new(String::from_utf8(secret).ok()?).ok()
-    }
-    #[cfg(not(target_os = "macos"))]
-    None
 }
 
 /// The name fragment of the virtual audio device Aura speaks into so a

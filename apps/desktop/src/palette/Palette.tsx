@@ -50,6 +50,10 @@ export function Palette({ bridge }: { bridge: ShellBridge }) {
       case "quit":
         await bridge.quit();
         return;
+      case "tokens":
+        await bridge.dispatch({ type: "closePalette" });
+        await bridge.openTokens();
+        return;
       case "listening":
         // Starting can take a couple of seconds; don't hold the palette open.
         void (command.action.start ? bridge.startListening() : bridge.stopListening());

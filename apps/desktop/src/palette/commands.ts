@@ -3,6 +3,7 @@ import type { ListeningState, ShellCommand, ShellState } from "../shell/types";
 export type PaletteAction =
   | { readonly kind: "shell"; readonly command: ShellCommand }
   | { readonly kind: "quit" }
+  | { readonly kind: "tokens" }
   | { readonly kind: "listening"; readonly start: boolean }
   /** Listed so the palette shows where Aura is going; cannot be run yet. */
   | { readonly kind: "unavailable" };
@@ -67,6 +68,7 @@ export function paletteCommands(
       group: "Controls",
       action: { kind: "shell", command: { type: "toggleHidden" } },
     },
+    { id: "tokens", title: "Set API tokens…", group: "Controls", action: { kind: "tokens" } },
     { id: "quit", title: "Quit Aura", group: "Controls", action: { kind: "quit" } },
   ];
   const intelligence = INTELLIGENCE_COMMANDS.map(

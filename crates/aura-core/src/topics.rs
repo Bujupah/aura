@@ -1,10 +1,9 @@
 //! Topic notes: what has been said in the meeting, grouped by subject, and
 //! how the windows showing them are arranged.
 //!
-//! The note-taking agent owns the arrangement: after every batch of turns it
-//! states the complete set of windows — which exist, in what order, where and
-//! how large. This module applies that, with two limits the agent cannot
-//! override: a note must trace back to something a person said, and placement
+//! The note-taking agent adds windows and changes them — their content, their
+//! corner, their size. It cannot close one: only the seller can. This module
+//! applies the agent's changes, with two further limits it cannot override: a note must trace back to something a person said, and placement
 //! is expressed in a fixed vocabulary that always fits on screen. Anything
 //! the agent looked up on the web is kept visibly apart from what was said,
 //! and only survives if it names a page a search really returned.
@@ -123,8 +122,6 @@ pub enum Rejection {
     NoNotes,
     /// New or changed content cited no turn the agent could have read.
     NoEvidence,
-    /// More windows than can be shown.
-    TooMany,
     Duplicate,
 }
 
@@ -151,17 +148,23 @@ impl TopicBoard {
         &self.topics
     }
 
-    /// Replaces the arrangement with `windows`, in that order. Topics left
-    /// out lose their window but keep their notes.
+    /// Applies the agent's changes: each entry adds a window or changes one
+    /// that exists. Windows the agent does not mention stay exactly as they
+    /// are — the agent cannot close a window; only the seller can
+    /// ([`remove`](Self::remove)). Existing windows keep their order, so
+    /// nothing shifts on screen just because something else was updated.
     ///
     /// `turn_is_new` says whether a turn id is one the agent was just shown.
     /// Content may cite those, or turns already cited somewhere on the board
-    /// (so topics can be merged or split) — never an id from nowhere.
-    /// `url_was_retrieved` says whether a web search in this same step
-    /// actually returned a URL; a `Web:` note with no such page is dropped.
+    /// — never an id from nowhere. `url_was_retrieved` says whether a web
+    /// search in this same step actually returned a URL; a `Web:` note with
+    /// no such page is dropped.
     ///
-    /// Returns whether anything changed, and the specs that were refused. A
-    /// refused content change still lets the agent move an existing window.
+    /// If more windows are asked for than can be shown, the ones untouched
+    /// for longest are put away (their notes are kept).
+    ///
+    /// Returns whether anything changed, and the entries that were refused.
+    /// A refused content change still lets the agent move an existing window.
     pub fn arrange(
         &mut self,
         windows: Vec<WindowSpec>,
@@ -181,48 +184,44 @@ impl TopicBoard {
             .flat_map(|topic| topic.source_turn_ids.iter().cloned())
             .collect();
         let mut rejections = Vec::new();
-        let mut placed: Vec<Topic> = Vec::new();
+        let mut touched: Vec<String> = Vec::new();
 
         for spec in windows {
             let id = slug(&spec.id);
-            let refused = if id.is_empty() {
-                Some(Rejection::NoId)
-            } else if placed.iter().any(|topic| topic.id == id) {
-                Some(Rejection::Duplicate)
-            } else if placed.len() >= MAX_WINDOWS {
-                Some(Rejection::TooMany)
-            } else {
-                None
-            };
-            if let Some(rejection) = refused {
-                rejections.push((spec.id, rejection));
+            if id.is_empty() {
+                rejections.push((spec.id, Rejection::NoId));
                 continue;
             }
-
+            if touched.contains(&id) {
+                rejections.push((spec.id, Rejection::Duplicate));
+                continue;
+            }
             let placement = Some(Placement {
                 zone: spec.zone,
                 size: spec.size,
             });
             let existing = self.topics.iter().position(|topic| topic.id == id);
+
             if spec.keep {
-                match existing.map(|index| self.topics.remove(index)) {
-                    Some(mut topic) => {
-                        topic.placement = placement;
-                        placed.push(topic);
+                match existing {
+                    Some(index) => {
+                        self.topics[index].placement = placement;
+                        touched.push(id);
                     }
                     // There is nothing to keep under that id.
                     None => rejections.push((spec.id, Rejection::NoNotes)),
                 }
                 continue;
             }
+
             let content = content_of(
                 &spec,
                 |turn_id| turn_is_new(turn_id) || already_cited.iter().any(|cited| cited == turn_id),
                 |url| url_was_retrieved(url) || known_pages.iter().any(|page| page == comparable(url)),
             );
-
-            match (existing.map(|index| self.topics.remove(index)), content) {
-                (Some(mut topic), Ok(content)) => {
+            match (existing, content) {
+                (Some(index), Ok(content)) => {
+                    let topic = &mut self.topics[index];
                     let same_brief = topic.image.as_ref().map(|image| &image.brief) == content.image_brief.as_ref();
                     if topic.title != content.title
                         || topic.notes != content.notes
@@ -247,49 +246,80 @@ impl TopicBoard {
                         }
                     }
                     topic.placement = placement;
-                    placed.push(topic);
+                    touched.push(id);
                 }
-                (Some(mut topic), Err(rejection)) => {
+                (Some(index), Err(rejection)) => {
                     // Unchanged wording needs no fresh evidence; anything
                     // else keeps the notes it had.
+                    let topic = &mut self.topics[index];
                     let unchanged = topic.title == clip(&spec.title, MAX_TITLE_CHARS)
                         && topic.notes == clean_notes(&spec.notes)
                         && topic.diagram == diagram_of(&spec)
                         && topic.image.as_ref().map(|image| &image.brief) == image_brief_of(&spec).as_ref();
-                    // (A topic with web notes always has evidence already,
-                    // so it never reaches this branch unchanged-but-refused.)
                     if !unchanged {
                         rejections.push((spec.id, rejection));
                     }
                     topic.placement = placement;
-                    placed.push(topic);
+                    touched.push(id);
                 }
-                (None, Ok(content)) => placed.push(Topic {
-                    id,
-                    title: content.title,
-                    notes: content.notes,
-                    source_turn_ids: content.evidence,
-                    sources: content.sources,
-                    diagram: content.diagram,
-                    image: content.image_brief.map(pending),
-                    updated_at_ms: now_ms,
-                    placement,
-                }),
+                (None, Ok(content)) => {
+                    self.topics.push(Topic {
+                        id: id.clone(),
+                        title: content.title,
+                        notes: content.notes,
+                        source_turn_ids: content.evidence,
+                        sources: content.sources,
+                        diagram: content.diagram,
+                        image: content.image_brief.map(pending),
+                        updated_at_ms: now_ms,
+                        placement,
+                    });
+                    touched.push(id);
+                }
                 (None, Err(rejection)) => rejections.push((spec.id, rejection)),
             }
         }
 
-        // Whatever was not mentioned is put away, most recent first.
-        let mut put_away = std::mem::take(&mut self.topics);
-        for topic in &mut put_away {
-            topic.placement = None;
+        // Too many windows: put away whatever has gone longest without an
+        // update, sparing what this very step touched for as long as possible.
+        while self.topics.iter().filter(|topic| topic.placement.is_some()).count() > MAX_WINDOWS {
+            let stalest = self
+                .topics
+                .iter()
+                .enumerate()
+                .filter(|(_, topic)| topic.placement.is_some())
+                .min_by_key(|(_, topic)| (touched.contains(&topic.id), topic.updated_at_ms))
+                .map(|(index, _)| index);
+            match stalest {
+                Some(index) => self.topics[index].placement = None,
+                None => break,
+            }
         }
-        put_away.sort_by_key(|topic| std::cmp::Reverse(topic.updated_at_ms));
-        put_away.truncate(MAX_TOPICS.saturating_sub(placed.len()));
-        placed.extend(put_away);
-        self.topics = placed;
+        // And forget the stalest of what has been put away.
+        while self.topics.len() > MAX_TOPICS {
+            let stalest = self
+                .topics
+                .iter()
+                .enumerate()
+                .filter(|(_, topic)| topic.placement.is_none())
+                .min_by_key(|(_, topic)| topic.updated_at_ms)
+                .map(|(index, _)| index);
+            match stalest {
+                Some(index) => {
+                    self.topics.remove(index);
+                }
+                None => break,
+            }
+        }
 
         (self.topics != before, rejections)
+    }
+
+    /// Removes a topic entirely, because the seller closed its window.
+    /// Returns its title if it existed.
+    pub fn remove(&mut self, topic_id: &str) -> Option<String> {
+        let index = self.topics.iter().position(|topic| topic.id == topic_id)?;
+        Some(self.topics.remove(index).title)
     }
 
     /// Records how an illustration turned out. Ignored, returning `false`,
@@ -523,24 +553,6 @@ mod tests {
     }
 
     #[test]
-    fn the_agent_decides_which_windows_exist_where_and_in_what_order() {
-        let mut board = TopicBoard::default();
-        let (changed, rejections) = board.arrange(
-            vec![
-                spec_at("env", "Environment", &["AWS"], &["customer-0"], Zone::BottomLeft, Size::Small),
-                spec_at("cmdb", "CMDB", &["Stale"], &["customer-0"], Zone::TopRight, Size::Large),
-            ],
-            new,
-            no_web,
-            10,
-        );
-        assert!(changed && rejections.is_empty());
-        assert_eq!(ids(&board), ["env", "cmdb"]);
-        assert_eq!(board.topics()[0].placement, Some(Placement { zone: Zone::BottomLeft, size: Size::Small }));
-        assert_eq!(board.topics()[1].placement, Some(Placement { zone: Zone::TopRight, size: Size::Large }));
-    }
-
-    #[test]
     fn a_window_can_be_moved_and_resized_without_new_evidence() {
         let mut board = TopicBoard::default();
         board.arrange(vec![spec("cmdb", "CMDB", &["Stale"], &["customer-0"])], new, no_web, 10);
@@ -555,33 +567,6 @@ mod tests {
         assert_eq!(topic.placement, Some(Placement { zone: Zone::TopLeft, size: Size::Large }));
         // Moving a window is not an update to what was said.
         assert_eq!(topic.updated_at_ms, 10);
-    }
-
-    #[test]
-    fn leaving_a_topic_out_closes_its_window_but_keeps_its_notes() {
-        let mut board = TopicBoard::default();
-        board.arrange(
-            vec![spec("a", "A", &["one"], &["customer-0"]), spec("b", "B", &["two"], &["customer-0"])],
-            new,
-            no_web,
-            10,
-        );
-        board.arrange(vec![spec("b", "B", &["two"], &[])], |_| false, no_web, 20);
-        assert_eq!(ids(&board), ["b", "a"]);
-        assert_eq!(board.topics()[1].placement, None);
-        assert_eq!(board.topics()[1].notes, ["one"]);
-        // …and it can be brought back later exactly as it was.
-        board.arrange(vec![spec("a", "A", &["one"], &[])], |_| false, no_web, 30);
-        assert!(board.topics()[0].placement.is_some());
-    }
-
-    #[test]
-    fn an_empty_arrangement_closes_every_window() {
-        let mut board = TopicBoard::default();
-        board.arrange(vec![spec("a", "A", &["one"], &["customer-0"])], new, no_web, 10);
-        let (changed, _) = board.arrange(vec![], new, no_web, 20);
-        assert!(changed);
-        assert!(board.topics().iter().all(|topic| topic.placement.is_none()));
     }
 
     #[test]
@@ -619,28 +604,6 @@ mod tests {
     }
 
     #[test]
-    fn topics_can_be_merged_by_citing_turns_already_on_the_board() {
-        let mut board = TopicBoard::default();
-        board.arrange(
-            vec![spec("aws", "AWS", &["Runs AWS"], &["customer-0"]), spec("ocp", "OpenShift", &["Runs OpenShift"], &["customer-1"])],
-            new,
-            no_web,
-            10,
-        );
-        // A later batch: neither turn is new any more.
-        let (changed, rejections) = board.arrange(
-            vec![spec("environment", "Environment", &["Runs AWS", "Runs OpenShift"], &["customer-0", "customer-1"])],
-            |_| false,
-            no_web,
-            20,
-        );
-        assert!(changed && rejections.is_empty());
-        assert_eq!(board.topics()[0].id, "environment");
-        assert_eq!(board.topics()[0].source_turn_ids, ["customer-0", "customer-1"]);
-        assert!(board.topics()[1..].iter().all(|topic| topic.placement.is_none()));
-    }
-
-    #[test]
     fn an_update_replaces_notes_and_accumulates_evidence() {
         let mut board = TopicBoard::default();
         board.arrange(vec![spec("env", "Environment", &["AWS"], &["customer-0"])], new, no_web, 1);
@@ -658,19 +621,6 @@ mod tests {
         board.arrange(vec![spec("a", "A", &["one"], &["customer-0"])], new, no_web, 10);
         let (changed, rejections) = board.arrange(vec![spec("A", "A", &["one"], &[])], |_| false, no_web, 99);
         assert!(!changed && rejections.is_empty());
-    }
-
-    #[test]
-    fn duplicates_and_windows_beyond_the_limit_are_refused() {
-        let mut board = TopicBoard::default();
-        let mut windows: Vec<WindowSpec> = (0..MAX_WINDOWS + 2)
-            .map(|index| spec(&format!("t{index}"), "T", &["n"], &["customer-0"]))
-            .collect();
-        windows.insert(1, spec("T0", "Again", &["n"], &["customer-0"]));
-        let (_, rejections) = board.arrange(windows, new, no_web, 0);
-        assert_eq!(board.topics().iter().filter(|topic| topic.placement.is_some()).count(), MAX_WINDOWS);
-        assert_eq!(rejections.iter().filter(|(_, r)| *r == Rejection::Duplicate).count(), 1);
-        assert_eq!(rejections.iter().filter(|(_, r)| *r == Rejection::TooMany).count(), 2);
     }
 
     #[test]
@@ -702,24 +652,6 @@ mod tests {
         assert!(topic.title.chars().count() <= MAX_TITLE_CHARS);
         assert!(topic.notes[0].chars().count() <= MAX_NOTE_CHARS);
         assert!(topic.notes[0].ends_with('…'));
-    }
-
-    #[test]
-    fn the_board_forgets_only_the_stalest_put_away_topics() {
-        let mut board = TopicBoard::default();
-        for index in 0..MAX_TOPICS + 3 {
-            // Each round shows one new topic and puts the previous one away.
-            board.arrange(
-                vec![spec(&format!("t{index}"), "T", &["n"], &["customer-0"])],
-                new,
-                no_web,
-                index as u64,
-            );
-        }
-        assert_eq!(board.topics().len(), MAX_TOPICS);
-        let kept = ids(&board);
-        assert!(kept.contains(&format!("t{}", MAX_TOPICS + 2).as_str()));
-        assert!(!kept.contains(&"t0"));
     }
 
     #[test]
@@ -868,18 +800,114 @@ mod tests {
     }
 
     #[test]
-    fn keeping_can_bring_back_a_topic_that_was_put_away_but_not_invent_one() {
+    fn the_agent_decides_what_a_window_says_where_it_sits_and_how_big_it_is() {
         let mut board = TopicBoard::default();
-        board.arrange(vec![spec("a", "A", &["one"], &["customer-0"])], new, no_web, 1);
-        board.arrange(vec![], new, no_web, 2);
-        let (_, rejections) = board.arrange(
-            vec![kept("a", Zone::TopLeft, Size::Small), kept("never-existed", Zone::TopLeft, Size::Small)],
-            |_| false,
+        let (changed, rejections) = board.arrange(
+            vec![
+                spec_at("env", "Environment", &["AWS"], &["customer-0"], Zone::BottomLeft, Size::Small),
+                spec_at("cmdb", "CMDB", &["Stale"], &["customer-0"], Zone::TopRight, Size::Large),
+            ],
+            new,
             no_web,
-            3,
+            10,
         );
-        assert_eq!(rejections, [("never-existed".to_string(), Rejection::NoNotes)]);
+        assert!(changed && rejections.is_empty());
+        assert_eq!(ids(&board), ["env", "cmdb"]);
+        assert_eq!(board.topics()[0].placement, Some(Placement { zone: Zone::BottomLeft, size: Size::Small }));
+        assert_eq!(board.topics()[1].placement, Some(Placement { zone: Zone::TopRight, size: Size::Large }));
+    }
+
+    #[test]
+    fn windows_the_agent_does_not_mention_stay_exactly_as_they_are() {
+        let mut board = TopicBoard::default();
+        board.arrange(
+            vec![spec("a", "A", &["one"], &["customer-0"]), spec("b", "B", &["two"], &["customer-0"])],
+            new,
+            no_web,
+            10,
+        );
+        let before = board.topics().to_vec();
+
+        // Mentioning only the second, or nothing at all, closes nothing.
+        let (changed, _) = board.arrange(vec![spec("b", "B", &["two", "three"], &["customer-1"])], new, no_web, 20);
+        assert!(changed);
+        assert_eq!(ids(&board), ["a", "b"], "order is stable");
+        assert_eq!(board.topics()[0], before[0]);
+        let (changed, _) = board.arrange(vec![], new, no_web, 30);
+        assert!(!changed);
+        assert!(board.topics().iter().all(|topic| topic.placement.is_some()));
+    }
+
+    #[test]
+    fn only_the_seller_removes_a_topic() {
+        let mut board = TopicBoard::default();
+        board.arrange(
+            vec![spec("a", "Nonsense", &["one"], &["customer-0"]), spec("b", "B", &["two"], &["customer-0"])],
+            new,
+            no_web,
+            10,
+        );
+        assert_eq!(board.remove("a").as_deref(), Some("Nonsense"));
+        assert_eq!(ids(&board), ["b"]);
+        assert_eq!(board.remove("a"), None);
+    }
+
+    #[test]
+    fn a_duplicate_entry_in_one_step_is_refused() {
+        let mut board = TopicBoard::default();
+        let (_, rejections) = board.arrange(
+            vec![spec("a", "A", &["one"], &["customer-0"]), spec("A", "Again", &["two"], &["customer-0"])],
+            new,
+            no_web,
+            0,
+        );
+        assert_eq!(rejections, [("A".to_string(), Rejection::Duplicate)]);
         assert_eq!(board.topics()[0].notes, ["one"]);
-        assert!(board.topics()[0].placement.is_some());
+    }
+
+    #[test]
+    fn beyond_the_window_limit_the_stalest_is_put_away_not_lost() {
+        let mut board = TopicBoard::default();
+        for index in 0..MAX_WINDOWS {
+            board.arrange(vec![spec(&format!("t{index}"), "T", &["n"], &["customer-0"])], new, no_web, index as u64 + 10);
+        }
+        // Refresh the oldest, so the second-oldest becomes the stalest.
+        board.arrange(vec![spec("t0", "T", &["n2"], &["customer-0"])], new, no_web, 500);
+        board.arrange(vec![spec("new", "New", &["n"], &["customer-0"])], new, no_web, 600);
+
+        let shown: Vec<&str> = board
+            .topics()
+            .iter()
+            .filter(|topic| topic.placement.is_some())
+            .map(|topic| topic.id.as_str())
+            .collect();
+        assert_eq!(shown.len(), MAX_WINDOWS);
+        assert!(shown.contains(&"t0") && shown.contains(&"new") && !shown.contains(&"t1"));
+        let put_away = board.topics().iter().find(|topic| topic.id == "t1").unwrap();
+        assert_eq!(put_away.notes, ["n"], "its notes are kept");
+
+        // The agent can bring it back by id; something else then gives way.
+        board.arrange(vec![kept("t1", Zone::TopLeft, Size::Small)], |_| false, no_web, 700);
+        assert!(board.topics().iter().find(|topic| topic.id == "t1").unwrap().placement.is_some());
+        assert_eq!(board.topics().iter().filter(|topic| topic.placement.is_some()).count(), MAX_WINDOWS);
+    }
+
+    #[test]
+    fn keeping_an_id_that_never_existed_is_refused() {
+        let mut board = TopicBoard::default();
+        let (_, rejections) = board.arrange(vec![kept("never-existed", Zone::TopLeft, Size::Small)], |_| false, no_web, 3);
+        assert_eq!(rejections, [("never-existed".to_string(), Rejection::NoNotes)]);
+    }
+
+    #[test]
+    fn the_board_forgets_only_the_stalest_put_away_topics() {
+        let mut board = TopicBoard::default();
+        for index in 0..MAX_TOPICS + 3 {
+            board.arrange(vec![spec(&format!("t{index}"), "T", &["n"], &["customer-0"])], new, no_web, index as u64);
+        }
+        assert_eq!(board.topics().len(), MAX_TOPICS);
+        let kept_ids = ids(&board);
+        assert!(kept_ids.contains(&format!("t{}", MAX_TOPICS + 2).as_str()));
+        assert!(!kept_ids.contains(&"t0"));
     }
 }

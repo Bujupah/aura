@@ -128,7 +128,9 @@ Eight engines (context, discovery, product, claim verification, competitive, com
 
 Finalized turns go to a note-taking agent on its own channel, so a slow model call never delays the transcript. One request is in flight at a time; turns that arrive meanwhile are batched into the next, and a failed request's turns are retried with it.
 
-**The agent owns the arrangement.** Each request shows it the windows currently on screen, the topics it has put away, a few turns of context and the new turns. It answers with the *complete* arrangement it wants: every window, in stacking order, with title, notes, sources, a zone (one of four corners) and a size (small, medium, large, or tall for a window with a visual), and optionally a diagram or an image brief. A window whose content is unchanged is returned by id alone (`keep`), which keeps responses short as the board grows. Leaving a window out closes it; returning it again brings it back. Moving, resizing, reordering, merging and splitting are all just different arrangements.
+**The agent adds and changes; the seller removes.** Each request shows the agent the windows on screen, the topics that have been put away, the titles of topics the seller closed, a few turns of context and the new turns. It answers with changes only: windows to add, and windows to change — in content, corner (one of four zones) or size (small, medium, large, or tall for a window with a visual). A window whose content is unchanged but should move is named by id alone (`keep`). Windows the agent does not mention stay exactly as they are, in the same order, so nothing shifts on screen because something else was updated.
+
+The agent cannot close a window. If more than eight are open, the one untouched for longest is put away with its notes intact. Closing is the seller's act: it removes the topic from the board and adds its title to the list the agent is told not to recreate.
 
 **The core decides what holds up.** `aura-core::topics` applies the arrangement under rules the agent cannot override:
 
@@ -152,7 +154,7 @@ A refused content change still lets the agent move the window; the previous note
 
 **Web access.** With the seller's permission (menu bar, on by default, read at session start) the request carries the provider's web search tool. The prompt forbids putting names or confidential meeting details into queries, but that is an instruction to a model, not a control — queries do leave the machine. Web findings are kept visibly apart from what was said and are never presented as verified; proper verification against approved BMC sources is Milestone 8.
 
-**The desktop makes the windows match.** It diffs the arrangement against the open windows and opens, moves, resizes or closes them. The seller keeps two overrides: a window they close stays closed for the session, and one they drag is only moved again when the agent assigns it a different rectangle.
+**The desktop makes the windows match.** It diffs the board against the open windows and opens, moves, resizes or closes them. A window the seller drags is pinned: the desktop notices any position it did not set itself, and from then on never moves that window — it only applies size changes in place — and passes its rectangle to the layout as an obstacle so other windows are arranged around it.
 
 ### Live translation (built; outgoing direction untested)
 

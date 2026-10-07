@@ -28,6 +28,16 @@ pub enum Update {
     Image { topic_id: String, png: Vec<u8> },
 }
 
+/// Something the seller did that the agent must respect.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Control {
+    /// The seller closed this topic's window: it is gone for good.
+    Dismiss { topic_id: String },
+}
+
+/// How many closed topics the agent is reminded of.
+const REMEMBERED_DISMISSALS: usize = 12;
+
 struct Illustration {
     topic_id: String,
     brief: String,
@@ -83,7 +93,13 @@ fn instructions() -> &'static str {
         .trim()
 }
 
-fn request(board: &TopicBoard, context: &VecDeque<Turn>, new_turns: &[Turn], abilities: &Abilities) -> String {
+fn request(
+    board: &TopicBoard,
+    dismissed: &[String],
+    context: &VecDeque<Turn>,
+    new_turns: &[Turn],
+    abilities: &Abilities,
+) -> String {
     let turn = |turn: &Turn| json!({ "id": turn.id, "speaker": turn.speaker, "text": turn.text });
     let (shown, put_away): (Vec<&Topic>, Vec<&Topic>) =
         board.topics().iter().partition(|topic| topic.placement.is_some());
@@ -105,6 +121,7 @@ fn request(board: &TopicBoard, context: &VecDeque<Turn>, new_turns: &[Turn], abi
             "id": topic.id, "title": topic.title, "notes": topic.notes,
             "turnIds": topic.source_turn_ids, "sources": topic.sources,
         })).collect::<Vec<_>>(),
+        "closedBySeller": dismissed,
         "recentTurns": context.iter().map(turn).collect::<Vec<_>>(),
         "newTurns": new_turns.iter().map(turn).collect::<Vec<_>>(),
         "webSearch": abilities.web_search,
@@ -153,6 +170,7 @@ pub async fn track_topics(
     client: ResponsesClient,
     abilities: Abilities,
     mut turns: mpsc::UnboundedReceiver<Turn>,
+    mut control: mpsc::UnboundedReceiver<Control>,
     publish: impl Fn(Update),
 ) {
     let started = Instant::now();
@@ -162,6 +180,8 @@ pub async fn track_topics(
     let (drawn, mut illustrations) = mpsc::unbounded_channel::<Illustration>();
     // Requests already handed to the illustrator: (topic id, brief).
     let mut commissioned: HashSet<(String, String)> = HashSet::new();
+    // Titles of topics the seller closed, most recent last.
+    let mut dismissed: Vec<String> = Vec::new();
 
     loop {
         tokio::select! {
@@ -171,6 +191,17 @@ pub async fn track_topics(
                 while let Ok(turn) = turns.try_recv() {
                     pending.push(turn);
                 }
+            }
+            Some(Control::Dismiss { topic_id }) = control.recv() => {
+                if let Some(title) = board.remove(&topic_id) {
+                    tracing::info!(event = "topic_dismissed", topic = %topic_id);
+                    dismissed.push(title);
+                    if dismissed.len() > REMEMBERED_DISMISSALS {
+                        dismissed.remove(0);
+                    }
+                    publish(Update::Topics(board.topics().to_vec()));
+                }
+                continue;
             }
             Some(illustration) = illustrations.recv() => {
                 let status = match illustration.result {
@@ -191,7 +222,7 @@ pub async fn track_topics(
         }
 
         let requested = Instant::now();
-        let input = request(&board, &context, &pending, &abilities);
+        let input = request(&board, &dismissed, &context, &pending, &abilities);
         let result = client
             .structured::<Arrangement>(StructuredRequest {
                 instructions: instructions(),
@@ -340,7 +371,15 @@ mod tests {
         context.push_back(first[0].clone());
         let abilities = Abilities { web_search: true, illustrator: None };
         let request: Value =
-            serde_json::from_str(&request(&board, &context, &[turn("customer-1", "It is slow.")], &abilities)).unwrap();
+            serde_json::from_str(&request(
+                &board,
+                &["Small talk".to_owned()],
+                &context,
+                &[turn("customer-1", "It is slow.")],
+                &abilities,
+            ))
+            .unwrap();
+        assert_eq!(request["closedBySeller"], json!(["Small talk"]));
         assert_eq!(request["windows"][0]["id"], "cmdb");
         assert_eq!(request["windows"][0]["zone"], "topRight");
         assert_eq!(request["windows"][0]["turnIds"], json!(["customer-0"]));

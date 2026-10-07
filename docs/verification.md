@@ -2,7 +2,7 @@
 
 | Check | Result |
 | --- | --- |
-| `cargo test --workspace` | 88 passing (shell, turn assembly, arrangement validation, screen layout, pacing, resampling, level meter, GPT-Live and Live Translate protocols, note-taking agent, illustrator, settings, prompts) |
+| `cargo test --workspace` | 89 passing (shell, turn assembly, arrangement validation, screen layout, pacing, resampling, level meter, GPT-Live and Live Translate protocols, note-taking agent, illustrator, settings, prompts) |
 | `swift test` in `native/macos/AuraCapture` | 5 passing (format conversion to mono PCM16 at 24 and 16 kHz) |
 | `pnpm test` | 20 passing (palette, transcript ordering, note labels, translation summary) |
 | GPT-Live with a real session | 12.7 s synthetic clip transcribed word-for-word at ~0.4 s lag ([details](architecture/ai.md#31-what-a-real-session-showed)) |
@@ -16,6 +16,8 @@
 | Translation, outgoing | Only the refusal path: with no virtual microphone installed the app declines to start and explains. Audio playback itself was checked silently on the default output |
 | Closing topic windows | Dismissing a window and starting a new session both close windows correctly on real windows. Builds before this one crashed when a topic window closed, and left old windows behind on a new session; both are fixed |
 | Agent response time | Scripted six-turn conversation, one run each: restating every window took 2.8–7.7 s per update (mean 4.8 s); letting the agent keep unchanged windows by id took 1.9–5.4 s (mean 3.9 s). Turning reasoning effort off was faster still (mean 2.9 s) but merged everything into one window and lost the diagram, so it was not adopted |
+| Windows stay where the seller puts them | In the real app a topic window was moved the way a drag would move it; the app pinned it, and after the agent's next update (which added a second window) it was still at the same position. Done with a scripted move, not a real mouse drag |
+| Only the seller removes topics | Core rules tested: unmentioned windows stay, order is stable, removal deletes the topic. The path from the ✕ button through to the agent being told has not been exercised live |
 | Shell windows: expand, palette, hide all, restore; frontmost app unchanged | Observed on real windows |
 | `Aura.app` bundle builds with the capture library linked and the microphone usage string | Observed |
 

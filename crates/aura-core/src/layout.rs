@@ -43,17 +43,27 @@ pub fn dimensions(size: Size) -> (f64, f64) {
 /// `right_inset` keeps the right-hand zones clear of the status overlay's
 /// column.
 ///
+/// `obstacles` are rectangles already taken — windows the seller dragged
+/// somewhere themselves — which are left alone and kept clear.
+///
 /// The agent may ask for more than the screen can hold. A window that fits
 /// nowhere at its requested size is tried at each smaller size, and is left
 /// out (`None`) only if even the smallest does not fit. Whatever is returned
 /// is on screen and overlaps nothing.
-pub fn arrange(area: Rect, right_inset: f64, windows: &[Placement]) -> Vec<Option<Rect>> {
+pub fn arrange(
+    area: Rect,
+    right_inset: f64,
+    windows: &[Placement],
+    obstacles: &[Rect],
+) -> Vec<Option<Rect>> {
     let left_edge = area.x + MARGIN;
     let right_edge = area.right() - MARGIN - right_inset;
     let top_edge = area.y + MARGIN;
     let bottom_edge = area.bottom() - MARGIN;
 
-    let mut placed: Vec<Rect> = Vec::with_capacity(windows.len());
+    // Obstacles are windows the seller has placed by hand: they are never
+    // moved, and nothing is placed over them.
+    let mut placed: Vec<Rect> = obstacles.to_vec();
     let mut rects = vec![None; windows.len()];
 
     for (index, placement) in windows.iter().enumerate() {
@@ -123,6 +133,10 @@ mod tests {
         Placement { zone, size }
     }
 
+    fn place(area: Rect, inset: f64, windows: &[Placement]) -> Vec<Option<Rect>> {
+        arrange(area, inset, windows, &[])
+    }
+
     fn overlap(a: &Rect, b: &Rect) -> bool {
         a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom()
     }
@@ -146,21 +160,21 @@ mod tests {
 
     #[test]
     fn a_top_stack_runs_downward_from_its_corner_in_the_given_order() {
-        let rects = all(arrange(SCREEN, INSET, &[at(Zone::TopLeft, Size::Small), at(Zone::TopLeft, Size::Medium)]));
+        let rects = all(place(SCREEN, INSET, &[at(Zone::TopLeft, Size::Small), at(Zone::TopLeft, Size::Medium)]));
         assert_eq!(rects[0], Rect { x: 24.0, y: 49.0, width: 300.0, height: 96.0 });
         assert_eq!((rects[1].x, rects[1].y), (24.0, 49.0 + 96.0 + GAP));
     }
 
     #[test]
     fn a_bottom_stack_runs_upward_from_its_corner() {
-        let rects = all(arrange(SCREEN, INSET, &[at(Zone::BottomLeft, Size::Small), at(Zone::BottomLeft, Size::Small)]));
+        let rects = all(place(SCREEN, INSET, &[at(Zone::BottomLeft, Size::Small), at(Zone::BottomLeft, Size::Small)]));
         assert_eq!(rects[0].bottom(), SCREEN.bottom() - 24.0);
         assert_eq!(rects[1].bottom(), rects[0].y - GAP);
     }
 
     #[test]
     fn right_hand_zones_stay_clear_of_the_overlay_column() {
-        let rects = all(arrange(SCREEN, INSET, &[at(Zone::TopRight, Size::Large), at(Zone::BottomRight, Size::Small)]));
+        let rects = all(place(SCREEN, INSET, &[at(Zone::TopRight, Size::Large), at(Zone::BottomRight, Size::Small)]));
         for rect in rects {
             assert!(rect.right() <= SCREEN.right() - 24.0 - INSET);
         }
@@ -169,7 +183,7 @@ mod tests {
     #[test]
     fn a_full_column_continues_in_the_next_one_toward_the_centre() {
         let windows = vec![at(Zone::TopLeft, Size::Large); 5];
-        let rects = arrange(SCREEN, INSET, &windows);
+        let rects = place(SCREEN, INSET, &windows);
         assert_tidy(SCREEN, &rects);
         let rects = all(rects);
         assert!(rects[4].x > rects[0].x, "the fifth large window should wrap");
@@ -179,7 +193,7 @@ mod tests {
     fn opposite_stacks_on_one_side_never_collide() {
         let mut windows = vec![at(Zone::TopRight, Size::Large); 3];
         windows.extend(vec![at(Zone::BottomRight, Size::Large); 3]);
-        assert_tidy(SCREEN, &arrange(SCREEN, INSET, &windows));
+        assert_tidy(SCREEN, &place(SCREEN, INSET, &windows));
     }
 
     #[test]
@@ -194,7 +208,7 @@ mod tests {
                     at(zones[n % 4], sizes[(n / 4) % 4])
                 })
                 .collect();
-            let rects = arrange(SCREEN, INSET, &windows);
+            let rects = place(SCREEN, INSET, &windows);
             assert_eq!(rects.len(), MAX_WINDOWS);
             assert_tidy(SCREEN, &rects);
             // A full set of mixed sizes fits a laptop screen with at most
@@ -202,22 +216,35 @@ mod tests {
             assert!(rects.iter().flatten().count() >= MAX_WINDOWS - 1, "seed {seed} dropped too many");
         }
         // The worst cases: everything large, or everything tall, in one corner.
-        assert_tidy(SCREEN, &arrange(SCREEN, INSET, &[at(Zone::BottomRight, Size::Large); MAX_WINDOWS]));
-        assert_tidy(SCREEN, &arrange(SCREEN, INSET, &[at(Zone::TopLeft, Size::Tall); 6]));
+        assert_tidy(SCREEN, &place(SCREEN, INSET, &[at(Zone::BottomRight, Size::Large); MAX_WINDOWS]));
+        assert_tidy(SCREEN, &place(SCREEN, INSET, &[at(Zone::TopLeft, Size::Tall); 6]));
     }
 
     #[test]
     fn a_window_that_does_not_fit_is_shrunk_before_it_is_left_out() {
         // Room for one column of two tall windows and little else.
         let cramped = Rect { x: 0.0, y: 0.0, width: 340.0 + 2.0 * 24.0, height: 920.0 };
-        let rects = arrange(cramped, 0.0, &[at(Zone::TopLeft, Size::Tall); 4]);
+        let rects = place(cramped, 0.0, &[at(Zone::TopLeft, Size::Tall); 4]);
         assert_tidy(cramped, &rects);
         let heights: Vec<Option<f64>> = rects.iter().map(|rect| rect.map(|rect| rect.height)).collect();
         assert_eq!(heights, [Some(420.0), Some(420.0), None, None]);
 
         let roomier = Rect { height: 1100.0, ..cramped };
-        let rects = arrange(roomier, 0.0, &[at(Zone::TopLeft, Size::Tall); 3]);
+        let rects = place(roomier, 0.0, &[at(Zone::TopLeft, Size::Tall); 3]);
         assert_tidy(roomier, &rects);
         assert_eq!(rects[2].map(|rect| rect.height), Some(172.0), "the third should shrink to fit");
+    }
+
+    #[test]
+    fn windows_the_seller_placed_by_hand_are_kept_clear() {
+        // The seller dragged a window into the top-left corner.
+        let pinned = Rect { x: 24.0, y: 49.0, width: 300.0, height: 172.0 };
+        let rects = arrange(SCREEN, INSET, &[at(Zone::TopLeft, Size::Medium), at(Zone::TopLeft, Size::Small)], &[pinned]);
+        for rect in rects.iter().flatten() {
+            assert!(!overlap(rect, &pinned), "{rect:?} covers the pinned window");
+        }
+        assert_tidy(SCREEN, &rects);
+        // The corner is taken, so the stack starts just below it.
+        assert_eq!(rects[0].unwrap().y, pinned.bottom() + GAP);
     }
 }

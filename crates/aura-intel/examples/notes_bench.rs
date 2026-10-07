@@ -28,7 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (turns, received) = mpsc::unbounded_channel();
     let (updates, mut updated) = mpsc::unbounded_channel();
     let abilities = Abilities { web_search, illustrator: None };
-    tokio::spawn(track_topics(client, abilities, received, move |update| {
+    let (_control, controls) = mpsc::unbounded_channel();
+    tokio::spawn(track_topics(client, abilities, received, controls, move |update| {
         let _ = updates.send(update);
     }));
 

@@ -69,6 +69,7 @@ pub fn run() {
             tokens::token_clear,
             tokens::tokens_open,
         ])
+        .on_window_event(topics::on_window_event)
         .setup(|app| {
             // Menu-bar app: no Dock icon, and showing a panel never pulls the
             // seller out of their meeting app.

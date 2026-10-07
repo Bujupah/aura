@@ -6,4 +6,4 @@ mod topics;
 
 pub use illustrator::Illustrator;
 pub use responses::{IntelError, ResponsesClient, Structured, StructuredRequest};
-pub use topics::{track_topics, Abilities, Update};
+pub use topics::{track_topics, Abilities, Control, Update};

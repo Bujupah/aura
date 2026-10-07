@@ -29,7 +29,8 @@ It was designed as an AI Sales Engineering copilot for BMC Helix sellers: an inv
 | | |
 | --- | --- |
 | **Two-sided live transcript** | Your microphone is `ME`; the Mac's system audio is `CUSTOMER`. Who is speaking is decided by which device the audio came from, never by a model's guess. |
-| **Agent-run topic windows** | A note-taking agent keeps a small window for each subject the meeting is actually about. It decides which windows exist, what they say, where they sit and how big they are, and restates the whole arrangement as the conversation moves. |
+| **Agent-run topic windows** | A note-taking agent opens a small window for each subject the meeting is actually about and keeps it up to date — what it says, which corner it sits in, how big it is. |
+| **You have the last word** | Only you can close a window; closing one removes the topic and tells the agent not to bring it back. A window you drag stays exactly where you put it, and the agent arranges the others around it. |
 | **Notes you can trust** | Every note must cite a real turn of the conversation or it is discarded. Unanswered customer questions are marked `OPEN`; things you promised are marked `PROMISED`. |
 | **Diagrams** | When someone describes how systems connect or a process flows, the agent draws it as a Mermaid diagram, from what was said only. |
 | **Illustrations** | For ideas a diagram cannot express, a separate illustrator agent draws an image. It is captioned as an AI illustration. |

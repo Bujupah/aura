@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use aura_core::topics::Topic;
 use aura_core::transcript::{Speaker, Turn};
-use aura_intel::{track_topics, Abilities, Illustrator, ResponsesClient, Update};
+use aura_intel::{track_topics, Abilities, Control, Illustrator, ResponsesClient, Update};
 use aura_live::LiveError;
 use aura_translate::{TranslateConfig, TranslateError};
 use serde::Serialize;
@@ -166,6 +166,7 @@ pub struct MeetingSession {
     streams: Vec<JoinHandle<Option<f64>>>,
     meters: JoinHandle<()>,
     notes: JoinHandle<()>,
+    notes_control: mpsc::UnboundedSender<Control>,
     input: Input,
 }
 
@@ -207,6 +208,7 @@ impl MeetingSession {
         // Finalized turns also feed the note-taker. It gets its own channel
         // so a slow model call can never hold up the transcript.
         let (final_turns, turns_for_notes) = mpsc::unbounded_channel();
+        let (notes_control, control_for_notes) = mpsc::unbounded_channel();
         let notes = match ResponsesClient::new(credentials.openai.clone(), NOTES_MODEL) {
             Ok(client) => {
                 let events = events.clone();
@@ -214,7 +216,7 @@ impl MeetingSession {
                     web_search: options.web_access,
                     illustrator: options.illustrations.then(|| Illustrator::new(client.clone())),
                 };
-                tokio::spawn(track_topics(client, abilities, turns_for_notes, move |update| {
+                tokio::spawn(track_topics(client, abilities, turns_for_notes, control_for_notes, move |update| {
                     let _ = events.send(match update {
                         Update::Topics(topics) => SessionEvent::Topics { topics },
                         Update::Image { topic_id, png } => SessionEvent::TopicImage { topic_id, png },
@@ -243,8 +245,15 @@ impl MeetingSession {
             streams,
             meters,
             notes,
+            notes_control,
             input,
         })
+    }
+
+    /// Tells the note-taking agent the seller closed a topic's window. The
+    /// topic is removed and the agent is told not to bring it back.
+    pub fn dismiss_topic(&self, topic_id: String) {
+        let _ = self.notes_control.send(Control::Dismiss { topic_id });
     }
 
     /// Stops audio first, then closes both realtime sessions and waits for

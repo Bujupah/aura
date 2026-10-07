@@ -57,6 +57,16 @@ pub async fn meeting_stop(app: AppHandle) {
     stop(&app).await;
 }
 
+/// Passes the seller's removal of a topic on to the note-taking agent.
+pub fn dismiss_topic(app: &AppHandle, topic_id: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Some(session) = app.state::<Meeting>().session.lock().await.as_ref() {
+            session.dismiss_topic(topic_id);
+        }
+    });
+}
+
 /// For inputs that cannot await, such as the tray menu.
 pub fn toggle(app: &AppHandle) {
     let app = app.clone();

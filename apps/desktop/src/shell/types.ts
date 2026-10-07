@@ -27,7 +27,7 @@ export interface ShortcutBinding {
   readonly registered: boolean;
 }
 
-export type WindowKind = "overlay" | "palette" | "topic" | "gallery" | "tokens";
+export type WindowKind = "overlay" | "palette" | "topic" | "gallery" | "tokens" | "summary";
 
 // Mirrors `aura_session` and `aura_core::transcript`.
 
@@ -92,7 +92,11 @@ export type MeetingEvent =
   | { readonly type: "state"; readonly state: ListeningState }
   | { readonly type: "levels"; readonly seller: number; readonly customer: number }
   | { readonly type: "turn"; readonly turn: Turn }
-  | { readonly type: "topics"; readonly topics: readonly Topic[] };
+  | { readonly type: "topics"; readonly topics: readonly Topic[] }
+  | { readonly type: "advice"; readonly advice: Advice | null }
+  /** The seller asked "what are we missing?"; the answer follows as `gaps`. */
+  | { readonly type: "gapsAsked" }
+  | { readonly type: "gaps"; readonly gaps: Gaps | null };
 
 /** Mirrors `settings::Settings`. Changed from the menu bar. */
 export interface Settings {
@@ -114,3 +118,43 @@ export interface TokenStatus {
   readonly openai: TokenSource;
   readonly gemini: TokenSource;
 }
+
+// Mirrors `aura_core::advice` and `aura_core::summary`.
+
+/** The one next move for the seller. */
+export interface Advice {
+  readonly kind: "ask" | "say" | "caution";
+  readonly text: string;
+  readonly why: string;
+  readonly sourceTurnIds: readonly string[];
+  readonly atMs: number;
+}
+
+/** The advisor's answer to "what are we missing?". A suggestion, not a record. */
+export interface Gaps {
+  readonly understood: string;
+  readonly missing: readonly string[];
+  readonly priority: string;
+}
+
+export interface SummaryItem {
+  readonly text: string;
+  readonly sourceTurnIds: readonly string[];
+}
+
+export interface MeetingSummary {
+  readonly headline: string;
+  readonly overview: string;
+  readonly environment: readonly SummaryItem[];
+  readonly painPoints: readonly SummaryItem[];
+  readonly requirements: readonly SummaryItem[];
+  readonly openQuestions: readonly SummaryItem[];
+  readonly commitments: readonly SummaryItem[];
+  readonly nextStep: { readonly text: string; readonly why: string } | null;
+}
+
+export type SummaryState =
+  | { readonly status: "none" }
+  | { readonly status: "preparing" }
+  | { readonly status: "ready"; readonly summary: MeetingSummary; readonly markdown: string }
+  | { readonly status: "failed"; readonly message: string };

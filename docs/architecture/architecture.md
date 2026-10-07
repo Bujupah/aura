@@ -156,6 +156,18 @@ A refused content change still lets the agent move the window; the previous note
 
 **The desktop makes the windows match.** It diffs the board against the open windows and opens, moves, resizes or closes them. A window the seller drags is pinned: the desktop notices any position it did not set itself, and from then on never moves that window — it only applies size changes in place — and passes its rectangle to the layout as an obstacle so other windows are arranged around it.
 
+### The advisor and the summary (built)
+
+Finalized turns fan out to three consumers on separate channels: the note-taker, the advisor, and an in-memory transcript kept for the end of the meeting.
+
+**Next move.** After each finalized turn a fast model is shown the topic notes, the last ten turns and the suggestion currently on screen, and returns exactly one move — `ask`, `say`, `caution` or `none`. The core accepts it only if it cites a turn of this meeting; `none`, an empty move, or one citing nothing clears the suggestion. A move restated unchanged is not republished. One suggestion at a time is the whole interface: the overlay shows it, and the collapsed pill carries its text.
+
+**What are we missing?** On request a stronger model reviews up to the last 200 turns and lists what discovery has not established. This is judgement about what was *not* said, so it cannot cite evidence and is presented as a suggestion.
+
+**Summary.** When listening stops, the stronger model writes up the transcript. `aura-core::summary` keeps only items that cite a turn of the meeting; the overview and suggested next step are the model's wording and are labelled as such. The summary lives in memory until the next meeting replaces it, with a Markdown copy for the seller to take away. Nothing is written to disk.
+
+All three prompts forbid proposing or describing products: there is no approved knowledge to verify against yet (Milestones 7–8), so the advisor's job is discovery, not positioning.
+
 ### Live translation (built; outgoing direction untested)
 
 Each speaker's stream runs on one of two engines, chosen per session from the seller's settings:

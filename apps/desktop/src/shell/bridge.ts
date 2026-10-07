@@ -9,6 +9,7 @@ import type {
   ShellCommand,
   ShellState,
   ShortcutBinding,
+  SummaryState,
   TokenStatus,
   Topic,
   WindowKind,
@@ -39,16 +40,22 @@ export interface ShellBridge {
   /** Rejects with a message the user can act on. */
   setToken(provider: Provider, value: string): Promise<TokenStatus>;
   clearToken(provider: Provider): Promise<TokenStatus>;
+  /** Rejects with a message when there is no meeting to review. */
+  askWhatsMissing(): Promise<void>;
+  getSummary(): Promise<SummaryState>;
+  subscribeSummary(listener: (state: SummaryState) => void): () => void;
+  openSummary(): Promise<void>;
 }
 
 const STATE_EVENT = "shell://state";
 const MEETING_EVENT = "meeting://event";
 const SETTINGS_EVENT = "settings://changed";
+const SUMMARY_EVENT = "summary://state";
 
 const TOPIC_PREFIX = "topic-";
 
 function windowKind(label: string | null): WindowKind {
-  if (label === "palette" || label === "tokens") return label;
+  if (label === "palette" || label === "tokens" || label === "summary") return label;
   return label?.startsWith(TOPIC_PREFIX) ? "topic" : "overlay";
 }
 
@@ -87,6 +94,15 @@ function tauriBridge(): ShellBridge {
     getTokenStatus: () => invoke<TokenStatus>("tokens_status"),
     setToken: (provider, value) => invoke<TokenStatus>("token_set", { provider, value }),
     clearToken: (provider) => invoke<TokenStatus>("token_clear", { provider }),
+    askWhatsMissing: () => invoke<void>("meeting_whats_missing"),
+    getSummary: () => invoke<SummaryState>("summary_get"),
+    subscribeSummary(listener) {
+      const unlisten = listen<SummaryState>(SUMMARY_EVENT, (event) => listener(event.payload));
+      return () => {
+        void unlisten.then((stop) => stop());
+      };
+    },
+    openSummary: () => invoke<void>("summary_open"),
     getSettings: () => invoke<Settings>("settings_get"),
     subscribeSettings(listener) {
       const unlisten = listen<Settings>(SETTINGS_EVENT, (event) => listener(event.payload));
@@ -161,6 +177,17 @@ function browserBridge(): ShellBridge {
         illustrations: true,
       }),
     subscribeSettings: () => () => undefined,
+    askWhatsMissing() {
+      if (listening.status !== "listening") {
+        return Promise.reject("Start listening first: there is no meeting to review yet.");
+      }
+      emitMeeting({ type: "gapsAsked" });
+      window.setTimeout(() => emitMeeting({ type: "gaps", gaps: SAMPLE_GAPS }), 900);
+      return Promise.resolve();
+    },
+    getSummary: () => Promise.resolve(SAMPLE_SUMMARY),
+    subscribeSummary: () => () => undefined,
+    openSummary: () => Promise.resolve(),
     openTokens: () => Promise.resolve(),
     getTokenStatus: () => Promise.resolve(tokenStatus),
     setToken(provider, value) {
@@ -198,6 +225,19 @@ function browserBridge(): ShellBridge {
         [2200, turn("customer-0", "customer", "Honestly, our CMDB gets outdated very quickly. We run on AWS and OpenShift.", 1000, true)],
         [3200, turn("seller-0", "seller", "How are you currently discovering your infrastructure?", 9000, true)],
         [4200, turn("customer-1", "customer", "Mostly spreadsheets and", 14000, false)],
+        [
+          2600,
+          {
+            type: "advice",
+            advice: {
+              kind: "ask",
+              text: "How do you currently reconcile CI data from different sources?",
+              why: "It decides whether discovery belongs in the picture.",
+              sourceTurnIds: ["customer-0"],
+              atMs: 9000,
+            },
+          },
+        ],
       ];
       timers = script.map(([delay, event]) => window.setTimeout(() => emitMeeting(event), delay));
       timers.push(
@@ -221,6 +261,39 @@ function browserBridge(): ShellBridge {
     },
   };
 }
+
+const SAMPLE_GAPS = {
+  understood: "Their CMDB goes stale and discovery is manual.",
+  missing: [
+    "Who owns the CMDB and who decides",
+    "Number of configuration items and clusters",
+    "Whether replacing ServiceNow is even in scope",
+    "Target timeline",
+  ],
+  priority: "Ask who owns the CMDB and which sources feed it today.",
+};
+
+const SAMPLE_SUMMARY: SummaryState = {
+  status: "ready",
+  markdown: "# Discovery call: CMDB accuracy\n",
+  summary: {
+    headline: "Discovery call: CMDB accuracy and alert noise",
+    overview:
+      "The customer's CMDB becomes outdated quickly and nobody trusts it. They discover infrastructure with spreadsheets and an old script, and receive too many alerts from Dynatrace. The seller committed to a reference architecture by Friday.",
+    environment: [
+      { text: "Runs on AWS and OpenShift.", sourceTurnIds: ["customer-2"] },
+      { text: "Uses ServiceNow for incidents and Dynatrace for monitoring.", sourceTurnIds: ["customer-2"] },
+    ],
+    painPoints: [{ text: "The CMDB gets outdated very quickly, and nobody trusts it.", sourceTurnIds: ["customer-1"] }],
+    requirements: [],
+    openQuestions: [{ text: "Which OpenShift versions need to be supported?", sourceTurnIds: ["customer-5"] }],
+    commitments: [{ text: "Send a reference architecture by Friday.", sourceTurnIds: ["seller-8"] }],
+    nextStep: {
+      text: "Confirm the supported OpenShift versions, then send the reference architecture.",
+      why: "Both were promised and the compatibility answer is still unverified.",
+    },
+  },
+};
 
 export const SAMPLE_TOPIC: Topic = {
   id: "cmdb-accuracy",

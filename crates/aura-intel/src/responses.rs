@@ -33,6 +33,9 @@ pub struct StructuredRequest<'a> {
     pub schema: Value,
     /// Lets the model search the web when it judges it necessary.
     pub web_search: bool,
+    /// How hard the model should think: `"low"` while the meeting is live,
+    /// `"medium"` when quality matters more than speed.
+    pub effort: &'static str,
 }
 
 pub struct Structured<T> {
@@ -67,7 +70,7 @@ impl ResponsesClient {
             "model": self.model,
             // Meeting content is never retained by the provider on our behalf.
             "store": false,
-            "reasoning": { "effort": "low" },
+            "reasoning": { "effort": request.effort },
             "instructions": request.instructions,
             "input": request.input,
             "text": { "format": {

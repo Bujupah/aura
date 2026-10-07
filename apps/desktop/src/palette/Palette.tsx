@@ -50,6 +50,15 @@ export function Palette({ bridge }: { bridge: ShellBridge }) {
       case "quit":
         await bridge.quit();
         return;
+      case "missing":
+        await bridge.dispatch({ type: "closePalette" });
+        // If Aura is not listening the overlay explains; nothing to do here.
+        await bridge.askWhatsMissing().catch(() => undefined);
+        return;
+      case "summary":
+        await bridge.dispatch({ type: "closePalette" });
+        await bridge.openSummary();
+        return;
       case "tokens":
         await bridge.dispatch({ type: "closePalette" });
         await bridge.openTokens();

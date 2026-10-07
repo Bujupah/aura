@@ -22,7 +22,7 @@ Aura is a menu-bar app for macOS that listens to both sides of a call — your m
 
 It was designed as an AI Sales Engineering copilot for BMC Helix sellers: an invisible senior engineer in every customer meeting. The original brief is in [INITIAL_PROMPT.md](INITIAL_PROMPT.md).
 
-> **Prototype.** Aura listens, transcribes, takes notes and translates. It does not yet recommend what to ask next, verify product claims against approved sources, or produce post-meeting follow-ups. What has and has not been tested is tracked in [docs/verification.md](docs/verification.md).
+> **Prototype.** Aura listens, transcribes, takes notes, translates, suggests the next move and writes up the meeting. It does not yet verify product claims against approved sources, and nothing is saved between sessions. What has and has not been tested is tracked in [docs/verification.md](docs/verification.md).
 
 ## What it does
 
@@ -31,6 +31,9 @@ It was designed as an AI Sales Engineering copilot for BMC Helix sellers: an inv
 | **Two-sided live transcript** | Your microphone is `ME`; the Mac's system audio is `CUSTOMER`. Who is speaking is decided by which device the audio came from, never by a model's guess. |
 | **Agent-run topic windows** | A note-taking agent opens a small window for each subject the meeting is actually about and keeps it up to date — what it says, which corner it sits in, how big it is. |
 | **You have the last word** | Only you can close a window; closing one removes the topic and tells the agent not to bring it back. A window you drag stays exactly where you put it, and the agent arranges the others around it. |
+| **The next move** | One suggestion at a time — usually a discovery question specific to what was just said — shown in the overlay and in the collapsed pill. It clears itself once you have asked, flags a definite claim you made about compatibility, pricing or dates with a safer way to put it, and stays quiet when nothing is worth an interruption. It never proposes or describes a product. |
+| **What are we missing?** | Ask at any point (overlay button or ⌥Space) and Aura reviews the meeting so far and lists what discovery has not established, with the one gap to close first. |
+| **Meeting summary** | When you stop listening, Aura writes up the meeting: overview, environment, pain points, requirements, open questions, commitments and a suggested next step. Every listed item cites the turn it came from or is left out. Copy it as Markdown; it is not saved. |
 | **Notes you can trust** | Every note must cite a real turn of the conversation or it is discarded. Unanswered customer questions are marked `OPEN`; things you promised are marked `PROMISED`. |
 | **Diagrams** | When someone describes how systems connect or a process flows, the agent draws it as a Mermaid diagram, from what was said only. |
 | **Illustrations** | For ideas a diagram cannot express, a separate illustrator agent draws an image. It is captioned as an AI illustration. |
@@ -109,10 +112,11 @@ Then use the ring icon in the menu bar, or expand the overlay and press **Start 
 | `swift test --package-path native/macos/AuraCapture` | Swift tests |
 | `pnpm dev:web` | The interface in a browser on sample data. Add `?window=gallery` to see every topic window design |
 | `cargo run -p aura-intel --example notes_bench` | Time the note-taking agent on a scripted conversation, no audio |
+| `cargo run -p aura-intel --example advisor_bench` | Run the advisor and summarizer on a scripted conversation, no audio |
 | `cargo run -p aura-session --example listen -- --fixtures <seller.pcm> <customer.pcm> --seconds 30` | A full session from audio files, printed to the terminal — no microphone or permissions |
 | `fixtures/audio/make-fixture.sh <name> "<text>"` | Render synthetic speech for the command above |
 
-Sessions that reach the AI providers are billed: two realtime sessions per second of listening, plus one agent call per finished turn.
+Sessions that reach the AI providers are billed: two realtime sessions per second of listening, plus two small model calls per finished turn (notes and next move) and one larger call for each review or summary.
 
 ## Live translation
 
@@ -158,6 +162,7 @@ The packaged app contains no tokens. Open **menu bar → API Tokens…** and pas
 - **Audio is never written to disk.** Each stream holds a few seconds in memory and is streamed to the AI provider for that stream. Transcripts are not persisted yet either.
 - **Listening is always visible** in the overlay and the menu bar, including when Aura's windows are hidden. Recording and consent rules are yours to follow.
 - **Aura cannot guarantee its windows are hidden from screen sharing.** Every window is flagged as excluded from capture, but Apple documents that flag as legacy and current capture is reported to ignore it. Share a single window or app rather than your whole screen, use ⌘⇧. to hide everything, or keep Aura on a display you are not sharing. Test it once with a colleague.
+- **Suggestions are a model's judgement, not verified facts.** The advisor is told never to state what a product can do, and has no product knowledge to check against yet. "What are we missing?" and the summary's overview and next step are its own reading of the meeting.
 - **Web searches leave your Mac.** The agent is told not to put names or confidential details into queries, but that is an instruction to a model, not a control. Turn web access off under **menu bar → Agent**.
 - **Generated images can invent detail.** They are captioned, and the agent is told to prefer diagrams, which are held to the same evidence rule as notes.
 - **Translation sends that stream's audio to Google** instead of OpenAI, and the others hear a synthetic version of your voice. Tell them an interpreter is in use.
@@ -193,9 +198,9 @@ docs/                     Product spec, architecture, decisions, threat model
 
 | | |
 | --- | --- |
-| Done | Desktop shell · two-stream capture · live transcript · agent-run topic windows · diagrams · illustrations · web lookups · live translation |
+| Done | Desktop shell · two-stream capture · live transcript · agent-run topic windows · diagrams · illustrations · web lookups · live translation · next-move suggestions · "what are we missing?" · meeting summary |
 | Next | Event log and replay · faster agent updates · echo handling · lowering the meeting's volume under an interpretation |
-| Later | Next-best-question · approved-source knowledge and claim verification · deep reasoning ("What are we missing?") · post-meeting follow-up · gateway-issued credentials |
+| Later | Approved-source knowledge and claim verification · saved sessions · follow-up drafts (email, CRM) · gateway-issued credentials |
 
 ## Known gaps
 

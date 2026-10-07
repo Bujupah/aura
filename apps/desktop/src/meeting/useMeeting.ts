@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ShellBridge } from "../shell/bridge";
-import type { ListeningState, Turn } from "../shell/types";
+import type { Advice, Gaps, ListeningState, Turn } from "../shell/types";
 import { upsertTurn } from "./transcript";
 
 export interface Levels {
@@ -34,10 +34,27 @@ export function useListeningState(bridge: ShellBridge): ListeningState {
   return state;
 }
 
-/** Levels and transcript for the overlay. A new session starts a new transcript. */
-export function useMeetingFeed(bridge: ShellBridge): { levels: Levels; turns: readonly Turn[] } {
+/** What "what are we missing?" has come back with. */
+export type GapsState =
+  | { readonly status: "idle" }
+  | { readonly status: "asking" }
+  | { readonly status: "ready"; readonly gaps: Gaps }
+  | { readonly status: "failed" };
+
+export interface MeetingFeed {
+  readonly levels: Levels;
+  readonly turns: readonly Turn[];
+  readonly advice: Advice | null;
+  readonly gaps: GapsState;
+  dismissGaps(): void;
+}
+
+/** Everything the overlay shows about the meeting. A new session starts clean. */
+export function useMeetingFeed(bridge: ShellBridge): MeetingFeed {
   const [levels, setLevels] = useState<Levels>(SILENT);
   const [turns, setTurns] = useState<readonly Turn[]>([]);
+  const [advice, setAdvice] = useState<Advice | null>(null);
+  const [gaps, setGaps] = useState<GapsState>({ status: "idle" });
   useEffect(
     () =>
       bridge.subscribeMeeting((event) => {
@@ -48,13 +65,29 @@ export function useMeetingFeed(bridge: ShellBridge): { levels: Levels; turns: re
           case "turn":
             setTurns((current) => upsertTurn(current, event.turn));
             break;
+          case "advice":
+            setAdvice(event.advice);
+            break;
+          case "gapsAsked":
+            setGaps({ status: "asking" });
+            break;
+          case "gaps":
+            setGaps(event.gaps ? { status: "ready", gaps: event.gaps } : { status: "failed" });
+            break;
           case "state":
-            if (event.state.status === "starting") setTurns([]);
-            if (event.state.status !== "listening") setLevels(SILENT);
+            if (event.state.status === "starting") {
+              setTurns([]);
+              setGaps({ status: "idle" });
+            }
+            if (event.state.status !== "listening") {
+              setLevels(SILENT);
+              // A suggestion only makes sense while the meeting is live.
+              setAdvice(null);
+            }
             break;
         }
       }),
     [bridge],
   );
-  return { levels, turns };
+  return { levels, turns, advice, gaps, dismissGaps: () => setGaps({ status: "idle" }) };
 }

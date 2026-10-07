@@ -4,6 +4,8 @@ export type PaletteAction =
   | { readonly kind: "shell"; readonly command: ShellCommand }
   | { readonly kind: "quit" }
   | { readonly kind: "tokens" }
+  | { readonly kind: "missing" }
+  | { readonly kind: "summary" }
   | { readonly kind: "listening"; readonly start: boolean }
   /** Listed so the palette shows where Aura is going; cannot be run yet. */
   | { readonly kind: "unavailable" };
@@ -17,7 +19,6 @@ export interface PaletteCommand {
 
 const INTELLIGENCE_COMMANDS = [
   "What should I ask next?",
-  "What are we missing?",
   "Explain this.",
   "Can Helix do this?",
   "Verify that.",
@@ -68,6 +69,7 @@ export function paletteCommands(
       group: "Controls",
       action: { kind: "shell", command: { type: "toggleHidden" } },
     },
+    { id: "summary", title: "Show last meeting summary", group: "Controls", action: { kind: "summary" } },
     { id: "tokens", title: "Set API tokens…", group: "Controls", action: { kind: "tokens" } },
     { id: "quit", title: "Quit Aura", group: "Controls", action: { kind: "quit" } },
   ];
@@ -79,7 +81,10 @@ export function paletteCommands(
       action: { kind: "unavailable" },
     }),
   );
-  return [...windowCommands, ...intelligence];
+  const live: PaletteCommand[] = [
+    { id: "missing", title: "What are we missing?", group: "Aura", action: { kind: "missing" } },
+  ];
+  return [...windowCommands, ...live, ...intelligence];
 }
 
 /** Case-insensitive match on every whitespace-separated term, in any order. */

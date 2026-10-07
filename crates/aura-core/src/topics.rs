@@ -498,7 +498,7 @@ fn slug(raw: &str) -> String {
     out.trim_end_matches('-').to_owned()
 }
 
-fn clip(raw: &str, max_chars: usize) -> String {
+pub(crate) fn clip(raw: &str, max_chars: usize) -> String {
     let text = strip_links(raw).split_whitespace().collect::<Vec<_>>().join(" ");
     if text.chars().count() <= max_chars {
         return text;

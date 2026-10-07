@@ -5,15 +5,15 @@
 use std::sync::{Mutex, PoisonError};
 
 use aura_session::{
-    AudioInput, Credentials, FailureReason, Incoming, ListeningState, MeetingSession, SessionEvent,
-    SessionOptions, Translation,
+    AudioInput, Credentials, FailureReason, Incoming, ListeningState, MeetingSession, SessionEnd,
+    SessionEvent, SessionOptions, Translation,
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc;
 
 use crate::settings::{IncomingTranslation, Settings, SettingsStore};
 use crate::tokens::{self, Provider};
-use crate::{topics, tray};
+use crate::{summary, topics, tray};
 
 pub const EVENT: &str = "meeting://event";
 
@@ -110,22 +110,49 @@ async fn start(app: &AppHandle) {
 }
 
 async fn stop(app: &AppHandle) {
-    end_session(app).await;
+    let ended = end_session(app).await;
     set_state(app, ListeningState::Idle);
+    if let Some(ended) = ended {
+        summary::prepare(app, ended.transcript);
+    }
+}
+
+/// Asks the advisor what discovery has not established yet. Does nothing
+/// when Aura is not listening.
+#[tauri::command]
+pub async fn meeting_whats_missing(app: AppHandle) -> Result<(), String> {
+    match app.state::<Meeting>().session.lock().await.as_ref() {
+        Some(session) => {
+            session.ask_whats_missing();
+            // The answer appears in the overlay, so make sure it is open and
+            // shows that the question was heard, whichever window asked.
+            crate::shell::dispatch(
+                &app,
+                aura_core::shell::ShellCommand::SetOverlayMode {
+                    mode: aura_core::shell::OverlayMode::Expanded,
+                },
+            );
+            if let Err(error) = app.emit(EVENT, serde_json::json!({ "type": "gapsAsked" })) {
+                tracing::warn!(event = "meeting_emit_failed", %error);
+            }
+            Ok(())
+        }
+        None => Err("Start listening first: there is no meeting to review yet.".into()),
+    }
 }
 
 /// Releases the microphone and closes the realtime sessions, leaving the
-/// reported state as it is.
-async fn end_session(app: &AppHandle) {
-    let session = app.state::<Meeting>().session.lock().await.take();
-    if let Some(session) = session {
-        let usage = session.stop().await;
-        tracing::info!(
-            event = "listening_stopped",
-            billed_seconds = usage.seconds,
-            usage_confirmed = usage.confirmed
-        );
-    }
+/// reported state as it is. Returns what the session left behind.
+async fn end_session(app: &AppHandle) -> Option<SessionEnd> {
+    let session = app.state::<Meeting>().session.lock().await.take()?;
+    let ended = session.stop().await;
+    tracing::info!(
+        event = "listening_stopped",
+        billed_seconds = ended.usage.seconds,
+        usage_confirmed = ended.usage.confirmed,
+        turns = ended.transcript.len()
+    );
+    Some(ended)
 }
 
 async fn relay(app: AppHandle, mut received: mpsc::UnboundedReceiver<SessionEvent>) {
@@ -137,7 +164,9 @@ async fn relay(app: AppHandle, mut received: mpsc::UnboundedReceiver<SessionEven
                 if failed {
                     // A failed session must not keep the microphone open.
                     let app = app.clone();
-                    tauri::async_runtime::spawn(async move { end_session(&app).await });
+                    tauri::async_runtime::spawn(async move {
+                        let _ = end_session(&app).await;
+                    });
                 }
             }
             SessionEvent::Topics { topics } => {
@@ -190,7 +219,7 @@ fn emit(app: &AppHandle, event: &SessionEvent) {
     }
 }
 
-fn credentials() -> Result<Credentials, String> {
+pub(crate) fn credentials() -> Result<Credentials, String> {
     // Developers keep tokens in the repository's gitignored `.env`. Release
     // builds never read it. A token entered in the app wins over either.
     #[cfg(debug_assertions)]

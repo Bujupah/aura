@@ -37,12 +37,7 @@ impl Illustrator {
 }
 
 fn instructions() -> &'static str {
-    const SOURCE: &str = include_str!("../../../prompts/visual/illustrator.md");
-    SOURCE
-        .strip_prefix("---")
-        .and_then(|rest| rest.split_once("\n---\n"))
-        .map_or(SOURCE, |(_, body)| body)
-        .trim()
+    crate::prompt_body(include_str!("../../../prompts/visual/illustrator.md"))
 }
 
 fn decode_image(payload: &Value) -> Result<Vec<u8>, IntelError> {

@@ -1,16 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { sampleRecommendation, type OverlayRecommendation } from "../fixtures/sampleRecommendation";
 import { formatClock } from "../meeting/transcript";
-import { useListeningState, useMeetingFeed, type Levels } from "../meeting/useMeeting";
+import {
+  useListeningState,
+  useMeetingFeed,
+  type GapsState,
+  type Levels,
+} from "../meeting/useMeeting";
 import type { ShellBridge } from "../shell/bridge";
-import type { ListeningState, ShellState, ShortcutBinding, Turn } from "../shell/types";
+import type { Advice, ListeningState, ShellState, ShortcutBinding, Turn } from "../shell/types";
 import { translationSummary, useSettings, useShellState, useShortcuts } from "../shell/useShell";
 
 export function Overlay({ bridge }: { bridge: ShellBridge }) {
   const state = useShellState(bridge);
   const shortcuts = useShortcuts(bridge);
   const listening = useListeningState(bridge);
-  const { levels, turns } = useMeetingFeed(bridge);
+  const { levels, turns, advice, gaps, dismissGaps } = useMeetingFeed(bridge);
+  const [notice, setNotice] = useState<string | null>(null);
   const translation = translationSummary(useSettings(bridge));
   const [sample, setSample] = useState<OverlayRecommendation | null>(null);
   if (state === null) return null;
@@ -28,6 +34,7 @@ export function Overlay({ bridge }: { bridge: ShellBridge }) {
         listening={listening}
         levels={levels}
         translation={translation}
+        advice={advice}
         bridge={bridge}
       />
       {expanded && (
@@ -35,6 +42,13 @@ export function Overlay({ bridge }: { bridge: ShellBridge }) {
           {listening.status === "failed" && (
             <p className="failure" role="alert">
               {listening.message}
+            </p>
+          )}
+          {advice && <NextMove advice={advice} />}
+          {gaps.status !== "idle" && <Missing state={gaps} onDismiss={dismissGaps} />}
+          {notice && (
+            <p className="failure" role="alert">
+              {notice}
             </p>
           )}
           {sample ? (
@@ -55,6 +69,20 @@ export function Overlay({ bridge }: { bridge: ShellBridge }) {
             >
               {active ? "Stop listening" : "Start listening"}
             </button>
+            {listening.status === "listening" && (
+              <button
+                type="button"
+                className="action"
+                onClick={() => {
+                  setNotice(null);
+                  bridge.askWhatsMissing().catch((error: unknown) => {
+                    setNotice(typeof error === "string" ? error : "That didn't work.");
+                  });
+                }}
+              >
+                What are we missing?
+              </button>
+            )}
             {import.meta.env.DEV && (
               <button
                 type="button"
@@ -83,29 +111,39 @@ function StatusBar({
   listening,
   levels,
   translation,
+  advice,
   bridge,
 }: {
   state: ShellState;
   listening: ListeningState;
   levels: Levels;
   translation: string | null;
+  advice: Advice | null;
   bridge: ShellBridge;
 }) {
   const expanded = state.overlayMode === "expanded";
+  // Collapsed, the pill is all there is: let it carry the next move.
+  const headline = !expanded && advice ? advice : null;
   return (
     <header className="status-bar" data-tauri-drag-region>
       <span className="status-dot" data-status={listening.status} aria-hidden="true" />
       <span className="brand">Aura</span>
-      <span className="status-text" role="status">
-        {STATUS_TEXT[listening.status]}
-      </span>
-      {listening.status === "listening" && (
+      {headline ? (
+        <span className="status-advice" data-kind={headline.kind} role="status" title={headline.text} dir="auto">
+          {headline.text}
+        </span>
+      ) : (
+        <span className="status-text" role="status">
+          {STATUS_TEXT[listening.status]}
+        </span>
+      )}
+      {listening.status === "listening" && !headline && (
         <span className="meters">
           <Meter label="Mic" value={levels.seller} />
           <Meter label="Meeting" value={levels.customer} />
         </span>
       )}
-      {translation && (
+      {translation && !headline && (
         <span className="tag" title="Live translation. Change it from the menu bar.">
           {translation}
         </span>
@@ -132,6 +170,63 @@ function StatusBar({
         <span className="chevron" data-open={expanded} aria-hidden="true" />
       </button>
     </header>
+  );
+}
+
+const MOVE_LABEL: Record<Advice["kind"], string> = {
+  ask: "Ask next",
+  say: "Say",
+  caution: "Careful",
+};
+
+function NextMove({ advice }: { advice: Advice }) {
+  return (
+    <section className="next-move" data-kind={advice.kind} aria-live="polite">
+      <h2>{MOVE_LABEL[advice.kind]}</h2>
+      <p className="primary" dir="auto">
+        {advice.text}
+      </p>
+      {advice.why && (
+        <p className="muted" dir="auto">
+          {advice.why}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function Missing({ state, onDismiss }: { state: GapsState; onDismiss: () => void }) {
+  return (
+    <section className="missing">
+      <div className="missing-head">
+        <h2>What we're missing</h2>
+        <button type="button" className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={onDismiss}>
+          ✕
+        </button>
+      </div>
+      {state.status === "asking" && <p className="muted">Reviewing the meeting so far…</p>}
+      {state.status === "failed" && <p className="warning">Aura couldn't review the meeting just now.</p>}
+      {state.status === "ready" && (
+        <>
+          <p className="muted" dir="auto">
+            {state.gaps.understood}
+          </p>
+          <ol>
+            {state.gaps.missing.map((gap) => (
+              <li key={gap} dir="auto">
+                {gap}
+              </li>
+            ))}
+          </ol>
+          {state.gaps.priority && (
+            <p dir="auto">
+              <span className="chip">First</span>
+              {state.gaps.priority}
+            </p>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

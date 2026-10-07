@@ -68,6 +68,11 @@ pub fn topics_current(windows: State<'_, TopicWindows>) -> Vec<Topic> {
     windows.lock().topics.clone()
 }
 
+/// The notes as they stand, for work that happens outside a webview.
+pub fn current(app: &AppHandle) -> Vec<Topic> {
+    app.state::<TopicWindows>().lock().topics.clone()
+}
+
 /// The topic's illustration as PNG bytes, or an empty body if there is none.
 /// Sent as raw bytes rather than JSON: a picture is around a megabyte.
 #[tauri::command]

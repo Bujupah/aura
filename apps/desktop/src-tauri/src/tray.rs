@@ -53,6 +53,7 @@ fn on_menu_event(app: &AppHandle, id: &str) {
         "topics" => ShellCommand::ToggleTopics,
         "palette" => ShellCommand::TogglePalette,
         "tokens" => return crate::tokens::open_window(app),
+        "summary" => return crate::summary::open_window(app),
         "quit" => return app.exit(0),
         _ => {
             change_setting(app, id);
@@ -185,6 +186,7 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             )?,
             &translation,
             &agent,
+            &item("summary", "Last Meeting Summary…", usable && crate::summary::exists(app))?,
             &item("tokens", "API Tokens…", usable)?,
             &separator()?,
             &item(

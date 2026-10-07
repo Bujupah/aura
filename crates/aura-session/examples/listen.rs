@@ -120,12 +120,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Turns finalized during shutdown still arrive here.
     while let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(20), received.recv()).await {
         if matches!(&event, SessionEvent::Turn { turn } if turn.is_final)
-            || matches!(&event, SessionEvent::Topics { .. })
+            || matches!(&event, SessionEvent::Topics { .. } | SessionEvent::Advice { .. })
         {
             println!("{}", serde_json::to_string(&event)?);
         }
     }
-    let usage = stopping.await?;
-    println!("{{\"type\":\"usage\",\"seconds\":{},\"confirmed\":{}}}", usage.seconds, usage.confirmed);
+    let ended = stopping.await?;
+    println!(
+        "{{\"type\":\"usage\",\"seconds\":{},\"confirmed\":{},\"turns\":{}}}",
+        ended.usage.seconds,
+        ended.usage.confirmed,
+        ended.transcript.len()
+    );
     Ok(())
 }

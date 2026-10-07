@@ -15,12 +15,17 @@ mod prompt;
 mod stream;
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use aura_core::advice::{Advice, Gaps};
+use aura_core::summary::MeetingSummary;
 use aura_core::topics::Topic;
 use aura_core::transcript::{Speaker, Turn};
-use aura_intel::{track_topics, Abilities, Control, Illustrator, ResponsesClient, Update};
+use aura_intel::{
+    track_advice, track_topics, Abilities, AdvisorRequest, AdvisorUpdate, Control, Illustrator,
+    ResponsesClient, Update,
+};
 use aura_live::LiveError;
 use aura_translate::{TranslateConfig, TranslateError};
 use serde::Serialize;
@@ -120,6 +125,10 @@ pub enum SessionEvent {
         #[serde(skip)]
         png: Vec<u8>,
     },
+    /// The one next move to show the seller, or `None` to show nothing.
+    Advice { advice: Option<Advice> },
+    /// The answer to "what are we missing?", or `None` if it failed.
+    Gaps { gaps: Option<Gaps> },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -157,8 +166,20 @@ pub struct Usage {
     pub confirmed: bool,
 }
 
-/// A small, fast model: topic notes are bookkeeping, not reasoning.
+/// A small, fast model for everything that must keep up with the meeting:
+/// topic notes and the next-move suggestion.
 const NOTES_MODEL: &str = "gpt-5.6-luna";
+/// A stronger model for the work that reviews a whole meeting: "what are we
+/// missing?" and the summary at the end.
+const REVIEW_MODEL: &str = "gpt-6-astra";
+
+/// What a session leaves behind when it stops.
+pub struct SessionEnd {
+    pub usage: Usage,
+    /// Every finalized turn, in the order it was finalized. Held in memory
+    /// only, for the end-of-meeting summary.
+    pub transcript: Vec<Turn>,
+}
 const LEVEL_INTERVAL: Duration = Duration::from_millis(100);
 
 pub struct MeetingSession {
@@ -167,6 +188,10 @@ pub struct MeetingSession {
     meters: JoinHandle<()>,
     notes: JoinHandle<()>,
     notes_control: mpsc::UnboundedSender<Control>,
+    advisor: JoinHandle<()>,
+    advisor_requests: mpsc::UnboundedSender<AdvisorRequest>,
+    fan_out: JoinHandle<()>,
+    transcript: Arc<Mutex<Vec<Turn>>>,
     input: Input,
 }
 
@@ -205,27 +230,71 @@ impl MeetingSession {
         )
         .await?;
 
-        // Finalized turns also feed the note-taker. It gets its own channel
-        // so a slow model call can never hold up the transcript.
-        let (final_turns, turns_for_notes) = mpsc::unbounded_channel();
+        // Finalized turns feed the note-taker and the advisor, each on its
+        // own channel so a slow model call can never hold up the transcript,
+        // and are kept for the end-of-meeting summary.
+        let (final_turns, mut finalized) = mpsc::unbounded_channel::<Turn>();
+        let (turns_to_notes, turns_for_notes) = mpsc::unbounded_channel();
+        let (turns_to_advisor, turns_for_advisor) = mpsc::unbounded_channel();
+        let transcript = Arc::new(Mutex::new(Vec::new()));
+        let fan_out = {
+            let transcript = transcript.clone();
+            tokio::spawn(async move {
+                while let Some(turn) = finalized.recv().await {
+                    transcript.lock().unwrap_or_else(PoisonError::into_inner).push(turn.clone());
+                    let _ = turns_to_notes.send(turn.clone());
+                    let _ = turns_to_advisor.send(turn);
+                }
+            })
+        };
+
+        let language = options.translation.as_ref().map(|translation| translation.my_language.clone());
         let (notes_control, control_for_notes) = mpsc::unbounded_channel();
-        let notes = match ResponsesClient::new(credentials.openai.clone(), NOTES_MODEL) {
-            Ok(client) => {
-                let events = events.clone();
+        let (advisor_requests, requests_for_advisor) = mpsc::unbounded_channel();
+        let (topics_now, topics_seen) = watch::channel(Vec::new());
+        let clients = ResponsesClient::new(credentials.openai.clone(), NOTES_MODEL)
+            .and_then(|fast| Ok((fast, ResponsesClient::new(credentials.openai.clone(), REVIEW_MODEL)?)));
+        let (notes, advisor) = match clients {
+            Ok((fast, deep)) => {
                 let abilities = Abilities {
                     web_search: options.web_access,
-                    illustrator: options.illustrations.then(|| Illustrator::new(client.clone())),
+                    illustrator: options.illustrations.then(|| Illustrator::new(fast.clone())),
                 };
-                tokio::spawn(track_topics(client, abilities, turns_for_notes, control_for_notes, move |update| {
-                    let _ = events.send(match update {
-                        Update::Topics(topics) => SessionEvent::Topics { topics },
-                        Update::Image { topic_id, png } => SessionEvent::TopicImage { topic_id, png },
-                    });
-                }))
+                let notes = {
+                    let events = events.clone();
+                    tokio::spawn(track_topics(fast.clone(), abilities, turns_for_notes, control_for_notes, move |update| {
+                        let _ = events.send(match update {
+                            Update::Topics(topics) => {
+                                // The advisor reads the notes as they stand.
+                                let _ = topics_now.send(topics.clone());
+                                SessionEvent::Topics { topics }
+                            }
+                            Update::Image { topic_id, png } => SessionEvent::TopicImage { topic_id, png },
+                        });
+                    }))
+                };
+                let advisor = {
+                    let events = events.clone();
+                    tokio::spawn(track_advice(
+                        fast,
+                        deep,
+                        language,
+                        turns_for_advisor,
+                        topics_seen,
+                        requests_for_advisor,
+                        move |update| {
+                            let _ = events.send(match update {
+                                AdvisorUpdate::Advice(advice) => SessionEvent::Advice { advice },
+                                AdvisorUpdate::Gaps(gaps) => SessionEvent::Gaps { gaps },
+                            });
+                        },
+                    ))
+                };
+                (notes, advisor)
             }
             Err(error) => {
-                tracing::error!(event = "notes_unavailable", %error);
-                tokio::spawn(async {})
+                tracing::error!(event = "intelligence_unavailable", %error);
+                (tokio::spawn(async {}), tokio::spawn(async {}))
             }
         };
 
@@ -246,6 +315,10 @@ impl MeetingSession {
             meters,
             notes,
             notes_control,
+            advisor,
+            advisor_requests,
+            fan_out,
+            transcript,
             input,
         })
     }
@@ -256,9 +329,15 @@ impl MeetingSession {
         let _ = self.notes_control.send(Control::Dismiss { topic_id });
     }
 
+    /// Asks the advisor what discovery has not yet established. The answer
+    /// arrives as [`SessionEvent::Gaps`].
+    pub fn ask_whats_missing(&self) {
+        let _ = self.advisor_requests.send(AdvisorRequest::WhatsMissing);
+    }
+
     /// Stops audio first, then closes both realtime sessions and waits for
     /// their final usage.
-    pub async fn stop(self) -> Usage {
+    pub async fn stop(self) -> SessionEnd {
         let _ = self.stop.send(true);
         self.input.stop().await;
         let _ = self.meters.await;
@@ -273,10 +352,14 @@ impl MeetingSession {
                 _ => usage.confirmed = false,
             }
         }
-        // The streams held the only senders of final turns; the note-taker
-        // finishes its last batch and ends.
+        // The streams held the only senders of final turns, so everything
+        // downstream finishes what it has and ends. The advisor's last
+        // thought is no longer wanted.
+        let _ = self.fan_out.await;
+        self.advisor.abort();
         let _ = self.notes.await;
-        usage
+        let transcript = std::mem::take(&mut *self.transcript.lock().unwrap_or_else(PoisonError::into_inner));
+        SessionEnd { usage, transcript }
     }
 }
 
@@ -358,4 +441,17 @@ fn speech_output(device_uid: Option<&str>) -> Result<Box<dyn SpeechSink>, Sessio
 #[cfg(not(target_os = "macos"))]
 fn speech_output(_device_uid: Option<&str>) -> Result<Box<dyn SpeechSink>, SessionError> {
     Err(SessionError::AudioOutput)
+}
+
+/// Writes up a finished meeting from its transcript and final notes.
+pub async fn summarize_meeting(
+    credentials: &Credentials,
+    language: Option<&str>,
+    transcript: &[Turn],
+    topics: &[Topic],
+) -> Result<MeetingSummary, String> {
+    let client = ResponsesClient::new(credentials.openai.clone(), REVIEW_MODEL).map_err(|error| error.to_string())?;
+    aura_intel::summarize(&client, language, transcript, topics)
+        .await
+        .map_err(|error| error.to_string())
 }

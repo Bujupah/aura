@@ -7,7 +7,7 @@ use aura_core::shell::{ShellCommand, ShellState};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::shortcuts::ShortcutBinding;
-use crate::{tokens, topics, tray, windows};
+use crate::{summary, tokens, topics, tray, windows};
 
 pub const STATE_EVENT: &str = "shell://state";
 
@@ -66,6 +66,7 @@ fn publish(app: &AppHandle, previous: Option<ShellState>, next: ShellState) {
         topics::sync_visibility(&handle, next);
         if next.hidden {
             tokens::close_window(&handle);
+            summary::close_window(&handle);
         }
         tray::refresh(&handle);
     });

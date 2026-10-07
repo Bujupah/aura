@@ -12,7 +12,7 @@ pub const PALETTE: &str = "palette";
 
 const OVERLAY_WIDTH: f64 = 340.0;
 const OVERLAY_COLLAPSED_HEIGHT: f64 = 38.0;
-const OVERLAY_EXPANDED_HEIGHT: f64 = 300.0;
+const OVERLAY_EXPANDED_HEIGHT: f64 = 440.0;
 const SCREEN_MARGIN: f64 = 24.0;
 /// The palette sits in the upper part of the screen, like Spotlight.
 const PALETTE_TOP_FRACTION: f64 = 0.22;

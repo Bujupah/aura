@@ -27,10 +27,11 @@ describe("paletteCommands", () => {
     expect(first("listening")).toBe("Stop listening");
   });
 
-  it("never offers intelligence commands as runnable", () => {
+  it("offers only the intelligence that is actually built", () => {
     const aura = paletteCommands(state, "idle").filter((c) => c.group === "Aura");
-    expect(aura.length).toBeGreaterThan(0);
-    expect(aura.some(isRunnable)).toBe(false);
+    const runnable = aura.filter(isRunnable).map((c) => c.title);
+    expect(runnable).toEqual(["What are we missing?"]);
+    expect(aura.length).toBeGreaterThan(runnable.length);
   });
 });
 

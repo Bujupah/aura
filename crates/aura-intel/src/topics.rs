@@ -85,12 +85,7 @@ fn schema() -> Value {
 }
 
 fn instructions() -> &'static str {
-    const SOURCE: &str = include_str!("../../../prompts/extraction/topics.md");
-    SOURCE
-        .strip_prefix("---")
-        .and_then(|rest| rest.split_once("\n---\n"))
-        .map_or(SOURCE, |(_, body)| body)
-        .trim()
+    crate::prompt_body(include_str!("../../../prompts/extraction/topics.md"))
 }
 
 fn request(
@@ -230,6 +225,7 @@ pub async fn track_topics(
                 schema_name: "arrangement",
                 schema: schema(),
                 web_search: abilities.web_search,
+                effort: "low",
             })
             .await;
         match result {

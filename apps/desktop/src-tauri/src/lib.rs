@@ -4,6 +4,7 @@ mod meeting;
 mod settings;
 mod shell;
 mod shortcuts;
+mod summary;
 mod tokens;
 mod topics;
 mod tray;
@@ -52,6 +53,7 @@ pub fn run() {
         .manage(meeting::Meeting::default())
         .manage(topics::TopicWindows::default())
         .manage(settings::SettingsStore::default())
+        .manage(summary::SummaryStore::default())
         .invoke_handler(tauri::generate_handler![
             commands::shell_state,
             commands::shell_shortcuts,
@@ -60,6 +62,9 @@ pub fn run() {
             meeting::meeting_state,
             meeting::meeting_start,
             meeting::meeting_stop,
+            meeting::meeting_whats_missing,
+            summary::summary_get,
+            summary::summary_open,
             topics::topics_current,
             topics::topic_dismiss,
             topics::topic_image,

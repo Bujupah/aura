@@ -107,6 +107,7 @@ Then use the ring icon in the menu bar, or expand the overlay and press **Start 
 | `pnpm test` | TypeScript and Rust tests |
 | `swift test --package-path native/macos/AuraCapture` | Swift tests |
 | `pnpm dev:web` | The interface in a browser on sample data. Add `?window=gallery` to see every topic window design |
+| `cargo run -p aura-intel --example notes_bench` | Time the note-taking agent on a scripted conversation, no audio |
 | `cargo run -p aura-session --example listen -- --fixtures <seller.pcm> <customer.pcm> --seconds 30` | A full session from audio files, printed to the terminal — no microphone or permissions |
 | `fixtures/audio/make-fixture.sh <name> "<text>"` | Render synthetic speech for the command above |
 
@@ -197,7 +198,7 @@ docs/                     Product spec, architecture, decisions, threat model
 
 ## Known gaps
 
-- The agent takes 5–8 seconds to update after a turn ends.
+- The agent takes about 2–5 seconds to update after a turn ends, longer when it searches the web.
 - No echo handling, and no reconnect if the network drops mid-session.
 - Translating your own voice into a real meeting app has not been confirmed end to end.
 - Development builds are ad-hoc signed, so macOS may ask for permissions again after a rebuild.

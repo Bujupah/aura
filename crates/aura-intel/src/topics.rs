@@ -52,9 +52,10 @@ fn schema() -> Value {
         "properties": { "windows": { "type": "array", "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["id", "title", "notes", "turnIds", "sources", "diagram", "imageBrief", "zone", "size"],
+            "required": ["id", "keep", "title", "notes", "turnIds", "sources", "diagram", "imageBrief", "zone", "size"],
             "properties": {
                 "id": { "type": "string" },
+                "keep": { "type": "boolean" },
                 "title": { "type": "string" },
                 "notes": { "type": "array", "items": { "type": "string" } },
                 "turnIds": { "type": "array", "items": { "type": "string" } },
@@ -297,7 +298,7 @@ mod tests {
     }
 
     fn window(id: &str, notes: Value, turn_ids: Value, sources: Value) -> Value {
-        json!({ "id": id, "title": id, "notes": notes, "turnIds": turn_ids, "sources": sources,
+        json!({ "id": id, "keep": false, "title": id, "notes": notes, "turnIds": turn_ids, "sources": sources,
                 "diagram": "", "imageBrief": "", "zone": "topRight", "size": "medium" })
     }
 
@@ -314,7 +315,7 @@ mod tests {
         for zone in item["zone"]["enum"].as_array().unwrap() {
             for size in item["size"]["enum"].as_array().unwrap() {
                 let parsed = arrangement(json!({ "windows": [{
-                    "id": "a", "title": "A", "notes": ["n"], "turnIds": [], "sources": [],
+                    "id": "a", "keep": false, "title": "A", "notes": ["n"], "turnIds": [], "sources": [],
                     "diagram": "", "imageBrief": "", "zone": zone, "size": size
                 }]}));
                 assert_eq!(parsed.windows.len(), 1);

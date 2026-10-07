@@ -91,6 +91,11 @@ pub struct Topic {
 #[serde(rename_all = "camelCase")]
 pub struct WindowSpec {
     pub id: String,
+    /// Keep the window's current content exactly as it is; only its place
+    /// in the arrangement may change. The content fields are then ignored,
+    /// which spares the agent from restating every window on every update.
+    #[serde(default)]
+    pub keep: bool,
     pub title: String,
     pub notes: Vec<String>,
     /// Turns supporting the notes. Required whenever the content is new or
@@ -199,6 +204,17 @@ impl TopicBoard {
                 size: spec.size,
             });
             let existing = self.topics.iter().position(|topic| topic.id == id);
+            if spec.keep {
+                match existing.map(|index| self.topics.remove(index)) {
+                    Some(mut topic) => {
+                        topic.placement = placement;
+                        placed.push(topic);
+                    }
+                    // There is nothing to keep under that id.
+                    None => rejections.push((spec.id, Rejection::NoNotes)),
+                }
+                continue;
+            }
             let content = content_of(
                 &spec,
                 |turn_id| turn_is_new(turn_id) || already_cited.iter().any(|cited| cited == turn_id),
@@ -477,6 +493,7 @@ mod tests {
             title: title.into(),
             notes: notes.iter().map(|s| s.to_string()).collect(),
             turn_ids: turn_ids.iter().map(|s| s.to_string()).collect(),
+            keep: false,
             sources: Vec::new(),
             diagram: String::new(),
             image_brief: String::new(),
@@ -821,5 +838,48 @@ mod tests {
         board.arrange(vec![visual_spec("flowchart TD\n  A --> B", "also draw this", &["customer-0"])], new, no_web, 1);
         assert!(board.topics()[0].diagram.is_some());
         assert_eq!(board.topics()[0].image, None);
+    }
+
+    fn kept(id: &str, zone: Zone, size: Size) -> WindowSpec {
+        WindowSpec {
+            keep: true,
+            ..spec_at(id, "", &[], &[], zone, size)
+        }
+    }
+
+    #[test]
+    fn a_kept_window_retains_everything_but_its_place() {
+        let mut board = TopicBoard::default();
+        board.arrange(vec![visual_spec("flowchart TD\n  A --> B", "", &["customer-0"])], new, no_web, 5);
+        let before = board.topics()[0].clone();
+
+        let (changed, rejections) = board.arrange(vec![kept("env", Zone::BottomLeft, Size::Tall)], |_| false, no_web, 99);
+        assert!(changed && rejections.is_empty());
+        let after = &board.topics()[0];
+        assert_eq!(after.placement, Some(Placement { zone: Zone::BottomLeft, size: Size::Tall }));
+        assert_eq!(
+            (&after.title, &after.notes, &after.diagram, after.updated_at_ms),
+            (&before.title, &before.notes, &before.diagram, 5)
+        );
+
+        // Kept in the same place: nothing changed at all.
+        let (changed, _) = board.arrange(vec![kept("env", Zone::BottomLeft, Size::Tall)], |_| false, no_web, 100);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn keeping_can_bring_back_a_topic_that_was_put_away_but_not_invent_one() {
+        let mut board = TopicBoard::default();
+        board.arrange(vec![spec("a", "A", &["one"], &["customer-0"])], new, no_web, 1);
+        board.arrange(vec![], new, no_web, 2);
+        let (_, rejections) = board.arrange(
+            vec![kept("a", Zone::TopLeft, Size::Small), kept("never-existed", Zone::TopLeft, Size::Small)],
+            |_| false,
+            no_web,
+            3,
+        );
+        assert_eq!(rejections, [("never-existed".to_string(), Rejection::NoNotes)]);
+        assert_eq!(board.topics()[0].notes, ["one"]);
+        assert!(board.topics()[0].placement.is_some());
     }
 }

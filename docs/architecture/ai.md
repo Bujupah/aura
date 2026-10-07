@@ -43,7 +43,7 @@ Domain code depends on interfaces — `LiveModel`, `ReasoningModel`, `EmbeddingM
 | --- | --- | --- |
 | `LiveModel` | `gpt-live-1` | Fast lane: hears each audio stream, returns timestamped transcript fragments, and signals when backend work is needed |
 | `ReasoningModel` | `gpt-6-astra` (to confirm) | Deep lane and the backend for delegated work, called by Aura's orchestrator |
-| Note-taking agent | `gpt-5.6-luna`, low reasoning effort, optional `web_search` tool | **Built.** Arranges the topic windows from finalized turns via the Responses API with a strict JSON schema; observed 5.3–8.3 s per update, which is too slow and needs work (smaller requests, or content and layout as separate calls) |
+| Note-taking agent | `gpt-5.6-luna`, low reasoning effort, optional `web_search` tool | **Built.** Arranges the topic windows from finalized turns via the Responses API with a strict JSON schema; observed 1.9–5.4 s per update on a scripted conversation after unchanged windows became keep-by-id (2.8–7.7 s before); lower reasoning effort was faster but degraded the notes |
 | `EmbeddingModel`, `RerankingModel` | Open | Chosen in Milestone 7 against the retrieval eval set |
 
 ### How GPT-Live maps onto Aura

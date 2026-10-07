@@ -128,7 +128,7 @@ Eight engines (context, discovery, product, claim verification, competitive, com
 
 Finalized turns go to a note-taking agent on its own channel, so a slow model call never delays the transcript. One request is in flight at a time; turns that arrive meanwhile are batched into the next, and a failed request's turns are retried with it.
 
-**The agent owns the arrangement.** Each request shows it the windows currently on screen, the topics it has put away, a few turns of context and the new turns. It answers with the *complete* arrangement it wants: every window, in stacking order, with title, notes, sources, a zone (one of four corners) and a size (small, medium, large, or tall for a window with a visual), and optionally a diagram or an image brief. Leaving a window out closes it; returning it again brings it back. Moving, resizing, reordering, merging and splitting are all just different arrangements.
+**The agent owns the arrangement.** Each request shows it the windows currently on screen, the topics it has put away, a few turns of context and the new turns. It answers with the *complete* arrangement it wants: every window, in stacking order, with title, notes, sources, a zone (one of four corners) and a size (small, medium, large, or tall for a window with a visual), and optionally a diagram or an image brief. A window whose content is unchanged is returned by id alone (`keep`), which keeps responses short as the board grows. Leaving a window out closes it; returning it again brings it back. Moving, resizing, reordering, merging and splitting are all just different arrangements.
 
 **The core decides what holds up.** `aura-core::topics` applies the arrangement under rules the agent cannot override:
 

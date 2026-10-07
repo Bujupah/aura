@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut audio = AudioInput::Capture;
     let mut seconds = None;
-    let mut options = SessionOptions { web_access: true, illustrations: true, translation: None };
+    let mut options = SessionOptions { web_access: true, illustrations: true, translation: None, resume: None };
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {

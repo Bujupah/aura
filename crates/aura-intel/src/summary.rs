@@ -5,7 +5,7 @@ use aura_core::topics::Topic;
 use aura_core::transcript::Turn;
 use serde_json::{json, Value};
 
-use crate::responses::StructuredRequest;
+use crate::responses::{StructuredRequest, WebSearch};
 use crate::{IntelError, ResponsesClient};
 
 /// The most turns sent for a summary; a very long meeting keeps its ending.
@@ -65,7 +65,7 @@ pub async fn summarize(
             input: &input,
             schema_name: "meeting_summary",
             schema: schema(),
-            web_search: false,
+            web_search: WebSearch::Off,
             // The meeting is over: take the time to get it right.
             effort: "medium",
         })

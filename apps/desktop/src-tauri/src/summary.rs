@@ -1,8 +1,7 @@
 //! The write-up shown when a meeting ends.
 //!
-//! It is prepared once listening stops, kept in memory until the next
-//! meeting replaces it, and never written to disk; the seller copies out
-//! what they want to keep.
+//! It is prepared once listening stops and shown at once. When sessions are
+//! being saved it is stored with its meeting and gives the meeting its name.
 
 use std::sync::{Mutex, PoisonError};
 
@@ -59,8 +58,9 @@ pub fn exists(app: &AppHandle) -> bool {
     !matches!(app.state::<SummaryStore>().get(), SummaryState::None)
 }
 
-/// Starts writing up the meeting that just ended and shows the window.
-pub fn prepare(app: &AppHandle, transcript: Vec<Turn>) {
+/// Starts writing up the meeting that just ended and shows the window. If
+/// the meeting was saved, the summary is saved with it and names it.
+pub fn prepare(app: &AppHandle, transcript: Vec<Turn>, session_id: Option<String>) {
     if transcript.len() < MIN_TURNS {
         return;
     }
@@ -87,6 +87,9 @@ pub fn prepare(app: &AppHandle, transcript: Vec<Turn>) {
             turns = transcript.len(),
             latency_ms = started.elapsed().as_millis() as u64
         );
+        if let (Ok(summary), Some(session_id)) = (&result, &session_id) {
+            crate::sessions::apply_summary(&app, session_id, summary);
+        }
         set(
             &app,
             match result {

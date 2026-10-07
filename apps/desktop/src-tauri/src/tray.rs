@@ -54,6 +54,7 @@ fn on_menu_event(app: &AppHandle, id: &str) {
         "palette" => ShellCommand::TogglePalette,
         "tokens" => return crate::tokens::open_window(app),
         "summary" => return crate::summary::open_window(app),
+        "sessions" => return crate::sessions::open_window(app),
         "quit" => return app.exit(0),
         _ => {
             change_setting(app, id);
@@ -78,6 +79,7 @@ fn change_setting(app: &AppHandle, id: &str) {
                 "outgoing" => settings.translate_my_voice = !settings.translate_my_voice,
                 "web_access" => settings.web_access = !settings.web_access,
                 "illustrations" => settings.illustrations = !settings.illustrations,
+                "save_sessions" => settings.save_sessions = !settings.save_sessions,
                 _ => {}
             }
         }
@@ -186,6 +188,8 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             )?,
             &translation,
             &agent,
+            &item("sessions", "Sessions…", usable)?,
+            &check("save_sessions", "Save Sessions", true, settings.save_sessions)?,
             &item("summary", "Last Meeting Summary…", usable && crate::summary::exists(app))?,
             &item("tokens", "API Tokens…", usable)?,
             &separator()?,

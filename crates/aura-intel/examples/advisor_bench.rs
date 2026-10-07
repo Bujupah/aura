@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use aura_core::transcript::{Speaker, Turn};
-use aura_intel::{summarize, track_advice, AdvisorRequest, AdvisorUpdate, ResponsesClient};
+use aura_intel::{summarize, track_advice, AdvisorRequest, AdvisorSetup, AdvisorUpdate, Ask, ResponsesClient};
 use aura_live::ApiCredential;
 use tokio::sync::{mpsc, watch};
 
@@ -33,7 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (_topics, topics_seen) = watch::channel(Vec::new());
     let (requests, requested) = mpsc::unbounded_channel();
     let (updates, mut updated) = mpsc::unbounded_channel();
-    tokio::spawn(track_advice(fast, deep.clone(), None, received, topics_seen, requested, move |update| {
+    let setup = AdvisorSetup { fast, deep: deep.clone(), language: None, earlier: Vec::new() };
+    tokio::spawn(track_advice(setup, received, topics_seen, requested, move |update| {
         let _ = updates.send(update);
     }));
 
@@ -65,6 +66,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(Some(AdvisorUpdate::Advice(None))) => println!("   -> (cleared)  ({:.1}s)", sent.elapsed().as_secs_f32()),
             Ok(_) => {}
             Err(_) => println!("   -> (no change)"),
+        }
+    }
+
+    for ask in [Ask::Promised, Ask::Architecture, Ask::Verify, Ask::Compare] {
+        requests.send(AdvisorRequest::Ask { ask: ask.clone(), question: None })?;
+        let asked = Instant::now();
+        if let Ok(Some(AdvisorUpdate::Answer(answer))) = tokio::time::timeout(Duration::from_secs(90), updated.recv()).await {
+            match answer {
+                Some(answer) => {
+                    println!("\n{ask:?}  ({:.1}s)  [{:?}]  {}\n  {}", asked.elapsed().as_secs_f32(), answer.verification, answer.title, answer.summary);
+                    for point in &answer.points {
+                        println!("  - {point}");
+                    }
+                    if !answer.say_this.is_empty() {
+                        println!("  say: {}", answer.say_this);
+                    }
+                    if let Some(diagram) = &answer.diagram {
+                        println!("  diagram: {}", diagram.replace('\n', " | "));
+                    }
+                    for source in &answer.sources {
+                        println!("  source: {}", source.url);
+                    }
+                }
+                None => println!("\n{ask:?}: failed"),
+            }
         }
     }
 

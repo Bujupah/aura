@@ -7,7 +7,7 @@
 use std::time::{Duration, Instant};
 
 use aura_core::transcript::{Speaker, Turn};
-use aura_intel::{track_topics, Abilities, ResponsesClient, Update};
+use aura_intel::{track_topics, Abilities, Earlier, ResponsesClient, Update};
 use aura_live::ApiCredential;
 use tokio::sync::mpsc;
 
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (updates, mut updated) = mpsc::unbounded_channel();
     let abilities = Abilities { web_search, illustrator: None };
     let (_control, controls) = mpsc::unbounded_channel();
-    tokio::spawn(track_topics(client, abilities, received, controls, move |update| {
+    tokio::spawn(track_topics(client, abilities, Earlier::default(), received, controls, move |update| {
         let _ = updates.send(update);
     }));
 

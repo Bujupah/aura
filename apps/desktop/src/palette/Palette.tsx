@@ -3,7 +3,7 @@ import type { ShellBridge } from "../shell/bridge";
 import { useListeningState } from "../meeting/useMeeting";
 import { useShellState } from "../shell/useShell";
 import {
-  filterCommands,
+  commandsFor,
   isRunnable,
   nextRunnable,
   paletteCommands,
@@ -19,7 +19,7 @@ export function Palette({ bridge }: { bridge: ShellBridge }) {
 
   const open = state?.paletteOpen ?? false;
   const commands = useMemo(
-    () => (state ? filterCommands(paletteCommands(state, listening), query) : []),
+    () => (state ? commandsFor(paletteCommands(state, listening), query) : []),
     [state, listening, query],
   );
   const selectedIndex = commands.findIndex(
@@ -50,10 +50,19 @@ export function Palette({ bridge }: { bridge: ShellBridge }) {
       case "quit":
         await bridge.quit();
         return;
+      case "ask":
+        await bridge.dispatch({ type: "closePalette" });
+        // If Aura is not listening the overlay explains; nothing to do here.
+        await bridge.ask(command.action.ask, command.action.question).catch(() => undefined);
+        return;
       case "missing":
         await bridge.dispatch({ type: "closePalette" });
         // If Aura is not listening the overlay explains; nothing to do here.
         await bridge.askWhatsMissing().catch(() => undefined);
+        return;
+      case "sessions":
+        await bridge.dispatch({ type: "closePalette" });
+        await bridge.openSessions();
         return;
       case "summary":
         await bridge.dispatch({ type: "closePalette" });
@@ -123,7 +132,6 @@ export function Palette({ bridge }: { bridge: ShellBridge }) {
                 onClick={() => void run(command)}
               >
                 <span>{command.title}</span>
-                {!runnable && <span className="palette-note">Not built yet</span>}
               </div>
             </li>
           );

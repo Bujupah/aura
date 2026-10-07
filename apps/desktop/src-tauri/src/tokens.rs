@@ -132,13 +132,13 @@ pub fn close_window(app: &AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
-fn from_keychain(account: &str) -> Option<String> {
+pub(crate) fn from_keychain(account: &str) -> Option<String> {
     let secret = security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, account).ok()?;
     String::from_utf8(secret).ok().filter(|secret| !secret.trim().is_empty())
 }
 
 #[cfg(target_os = "macos")]
-fn to_keychain(account: &str, secret: &str) -> Result<(), String> {
+pub(crate) fn to_keychain(account: &str, secret: &str) -> Result<(), String> {
     security_framework::passwords::set_generic_password(KEYCHAIN_SERVICE, account, secret.as_bytes())
         .map_err(|error| format!("The Keychain refused to save the token: {error}"))
 }
@@ -155,12 +155,12 @@ fn remove_from_keychain(account: &str) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn from_keychain(_account: &str) -> Option<String> {
+pub(crate) fn from_keychain(_account: &str) -> Option<String> {
     None
 }
 
 #[cfg(not(target_os = "macos"))]
-fn to_keychain(_account: &str, _secret: &str) -> Result<(), String> {
+pub(crate) fn to_keychain(_account: &str, _secret: &str) -> Result<(), String> {
     Err("Saving tokens is only supported on macOS.".into())
 }
 

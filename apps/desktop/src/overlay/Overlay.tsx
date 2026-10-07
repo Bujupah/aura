@@ -4,18 +4,21 @@ import { formatClock } from "../meeting/transcript";
 import {
   useListeningState,
   useMeetingFeed,
+  type AnswerState,
   type GapsState,
   type Levels,
 } from "../meeting/useMeeting";
 import type { ShellBridge } from "../shell/bridge";
 import type { Advice, ListeningState, ShellState, ShortcutBinding, Turn } from "../shell/types";
+import { Diagram } from "../topics/Diagram";
+import { hostOf } from "../topics/notes";
 import { translationSummary, useSettings, useShellState, useShortcuts } from "../shell/useShell";
 
 export function Overlay({ bridge }: { bridge: ShellBridge }) {
   const state = useShellState(bridge);
   const shortcuts = useShortcuts(bridge);
   const listening = useListeningState(bridge);
-  const { levels, turns, advice, gaps, dismissGaps } = useMeetingFeed(bridge);
+  const { levels, turns, advice, gaps, dismissGaps, answer, dismissAnswer } = useMeetingFeed(bridge);
   const [notice, setNotice] = useState<string | null>(null);
   const translation = translationSummary(useSettings(bridge));
   const [sample, setSample] = useState<OverlayRecommendation | null>(null);
@@ -45,6 +48,7 @@ export function Overlay({ bridge }: { bridge: ShellBridge }) {
             </p>
           )}
           {advice && <NextMove advice={advice} />}
+          {answer.status !== "idle" && <Reply state={answer} onDismiss={dismissAnswer} />}
           {gaps.status !== "idle" && <Missing state={gaps} onDismiss={dismissGaps} />}
           {notice && (
             <p className="failure" role="alert">
@@ -132,6 +136,15 @@ function StatusBar({
         <span className="status-advice" data-kind={headline.kind} role="status" title={headline.text} dir="auto">
           {headline.text}
         </span>
+      ) : listening.status === "listening" ? (
+        // A moving mark says "listening" at a glance; the words are still
+        // there for assistive technology.
+        <span className="listening-mark" role="status" aria-label="Listening" title="Listening">
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
       ) : (
         <span className="status-text" role="status">
           {STATUS_TEXT[listening.status]}
@@ -190,6 +203,61 @@ function NextMove({ advice }: { advice: Advice }) {
         <p className="muted" dir="auto">
           {advice.why}
         </p>
+      )}
+    </section>
+  );
+}
+
+const VERIFICATION_LABEL = { verified: "● Verified", unverified: "! Unverified" } as const;
+
+function Reply({ state, onDismiss }: { state: AnswerState; onDismiss: () => void }) {
+  const answer = state.status === "ready" ? state.answer : null;
+  return (
+    <section className="reply">
+      <div className="missing-head">
+        <h2 dir="auto">{answer?.title ?? "Aura"}</h2>
+        {answer && answer.verification !== "notApplicable" && (
+          <span className="verification" data-state={answer.verification}>
+            {VERIFICATION_LABEL[answer.verification]}
+          </span>
+        )}
+        <button type="button" className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={onDismiss}>
+          ✕
+        </button>
+      </div>
+      {state.status === "asking" && <p className="muted">Working on it…</p>}
+      {state.status === "failed" && <p className="warning">Aura couldn't answer that just now.</p>}
+      {answer && (
+        <>
+          {answer.summary && <p dir="auto">{answer.summary}</p>}
+          {answer.diagram && <Diagram source={answer.diagram} />}
+          {answer.points.length > 0 && (
+            <ul>
+              {answer.points.map((point) => (
+                <li key={point} dir="auto">
+                  {point}
+                </li>
+              ))}
+            </ul>
+          )}
+          {answer.sayThis && (
+            <p className="say-this" dir="auto">
+              <span className="chip">Say</span>
+              {answer.sayThis}
+            </p>
+          )}
+          {answer.sources.length > 0 && (
+            <p className="reply-sources">
+              {answer.verification === "verified" ? "Source: " : "Found on the web, not verified: "}
+              {answer.sources.map((source, index) => (
+                <span key={source.url} title={`${source.title}\n${source.url}`}>
+                  {index > 0 && ", "}
+                  {hostOf(source.url) || source.title}
+                </span>
+              ))}
+            </p>
+          )}
+        </>
       )}
     </section>
   );

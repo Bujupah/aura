@@ -18,6 +18,13 @@ pub struct Abilities {
     pub illustrator: Option<Illustrator>,
 }
 
+/// Where a continued meeting left off. Empty for a new one.
+#[derive(Debug, Clone, Default)]
+pub struct Earlier {
+    pub topics: Vec<Topic>,
+    pub turns: Vec<Turn>,
+}
+
 /// What the agent's work produces.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Update {
@@ -164,13 +171,17 @@ fn page(url: &str) -> &str {
 pub async fn track_topics(
     client: ResponsesClient,
     abilities: Abilities,
+    earlier: Earlier,
     mut turns: mpsc::UnboundedReceiver<Turn>,
     mut control: mpsc::UnboundedReceiver<Control>,
     publish: impl Fn(Update),
 ) {
     let started = Instant::now();
-    let mut board = TopicBoard::default();
-    let mut context: VecDeque<Turn> = VecDeque::with_capacity(CONTEXT_TURNS);
+    // A continued meeting's notes keep their place on its timeline.
+    let base_ms = earlier.topics.iter().map(|topic| topic.updated_at_ms).max().unwrap_or(0);
+    let mut board = TopicBoard::restore(earlier.topics);
+    let mut context: VecDeque<Turn> =
+        earlier.turns.into_iter().rev().take(CONTEXT_TURNS).rev().collect();
     let mut pending: Vec<Turn> = Vec::new();
     let (drawn, mut illustrations) = mpsc::unbounded_channel::<Illustration>();
     // Requests already handed to the illustrator: (topic id, brief).
@@ -224,13 +235,13 @@ pub async fn track_topics(
                 input: &input,
                 schema_name: "arrangement",
                 schema: schema(),
-                web_search: abilities.web_search,
+                web_search: abilities.web_search.into(),
                 effort: "low",
             })
             .await;
         match result {
             Ok(answer) => {
-                let now_ms = started.elapsed().as_millis() as u64;
+                let now_ms = base_ms + started.elapsed().as_millis() as u64;
                 let changed = accept(&mut board, answer.value, &pending, &answer.retrieved_urls, now_ms);
                 tracing::info!(
                     event = "windows_arranged",

@@ -22,7 +22,7 @@ Aura is a menu-bar app for macOS that listens to both sides of a call — your m
 
 It was designed as an AI Sales Engineering copilot for BMC Helix sellers: an invisible senior engineer in every customer meeting. The original brief is in [INITIAL_PROMPT.md](INITIAL_PROMPT.md).
 
-> **Prototype.** Aura listens, transcribes, takes notes, translates, suggests the next move and writes up the meeting. It does not yet verify product claims against approved sources, and nothing is saved between sessions. What has and has not been tested is tracked in [docs/verification.md](docs/verification.md).
+> **Prototype.** Aura listens, transcribes, takes notes, translates, suggests the next move, answers on request, writes up the meeting and saves it. Product answers are checked against BMC's public documentation only; approved internal knowledge is not connected yet. What has and has not been tested is tracked in [docs/verification.md](docs/verification.md).
 
 ## What it does
 
@@ -33,7 +33,9 @@ It was designed as an AI Sales Engineering copilot for BMC Helix sellers: an inv
 | **You have the last word** | Only you can close a window; closing one removes the topic and tells the agent not to bring it back. A window you drag stays exactly where you put it, and the agent arranges the others around it. |
 | **The next move** | One suggestion at a time — usually a discovery question specific to what was just said — shown in the overlay and in the collapsed pill. It clears itself once you have asked, flags a definite claim you made about compatibility, pricing or dates with a safer way to put it, and stays quiet when nothing is worth an interruption. It never proposes or describes a product. |
 | **What are we missing?** | Ask at any point (overlay button or ⌥Space) and Aura reviews the meeting so far and lists what discovery has not established, with the one gap to close first. |
-| **Meeting summary** | When you stop listening, Aura writes up the meeting: overview, environment, pain points, requirements, open questions, commitments and a suggested next step. Every listed item cites the turn it came from or is left out. Copy it as Markdown; it is not saved. |
+| **Ask Aura anything** | From the palette (⌥Space): *What should I ask next? · Explain this · Can Helix do this? · Verify that · Search BMC docs · Give me an answer · Create architecture · Prepare demo · Compare with competitor · Show customer environment · What have we promised? · Summarize so far · Think deeply* — or type your own question. Product answers are searched in BMC's own documentation and marked **Verified** only when a page from bmc.com that the search really returned supports them; otherwise **Unverified**, with a safe thing to say. |
+| **Meeting summary** | When you stop listening, Aura writes up the meeting: overview, environment, pain points, requirements, open questions, commitments and a suggested next step. Every listed item cites the turn it came from or is left out. Copy it as Markdown. |
+| **Saved sessions** | Each meeting is saved with its transcript, notes and summary, and named by the AI from its summary. Open **Sessions…** from the menu bar or palette to read an old one, delete it, or **Continue** it: listening resumes with the old transcript and notes in place, and everything new is added to the same session. |
 | **Notes you can trust** | Every note must cite a real turn of the conversation or it is discarded. Unanswered customer questions are marked `OPEN`; things you promised are marked `PROMISED`. |
 | **Diagrams** | When someone describes how systems connect or a process flows, the agent draws it as a Mermaid diagram, from what was said only. |
 | **Illustrations** | For ideas a diagram cannot express, a separate illustrator agent draws an image. It is captioned as an AI illustration. |
@@ -159,7 +161,8 @@ The packaged app contains no tokens. Open **menu bar → API Tokens…** and pas
 
 ## Privacy and limits
 
-- **Audio is never written to disk.** Each stream holds a few seconds in memory and is streamed to the AI provider for that stream. Transcripts are not persisted yet either.
+- **Audio is never written to disk.** Each stream holds a few seconds in memory and is streamed to the AI provider for that stream.
+- **Sessions are saved encrypted.** Transcript, notes and summary are written to `~/Library/Application Support/dev.aura.desktop/sessions`, encrypted with AES-256-GCM under a key kept in your Keychain; the files alone reveal nothing. Turn saving off with **menu bar → Save Sessions**, and delete any session from the Sessions window. Generated images are not kept.
 - **Listening is always visible** in the overlay and the menu bar, including when Aura's windows are hidden. Recording and consent rules are yours to follow.
 - **Aura cannot guarantee its windows are hidden from screen sharing.** Every window is flagged as excluded from capture, but Apple documents that flag as legacy and current capture is reported to ignore it. Share a single window or app rather than your whole screen, use ⌘⇧. to hide everything, or keep Aura on a display you are not sharing. Test it once with a colleague.
 - **Suggestions are a model's judgement, not verified facts.** The advisor is told never to state what a product can do, and has no product knowledge to check against yet. "What are we missing?" and the summary's overview and next step are its own reading of the meeting.
@@ -198,9 +201,9 @@ docs/                     Product spec, architecture, decisions, threat model
 
 | | |
 | --- | --- |
-| Done | Desktop shell · two-stream capture · live transcript · agent-run topic windows · diagrams · illustrations · web lookups · live translation · next-move suggestions · "what are we missing?" · meeting summary |
-| Next | Event log and replay · faster agent updates · echo handling · lowering the meeting's volume under an interpretation |
-| Later | Approved-source knowledge and claim verification · saved sessions · follow-up drafts (email, CRM) · gateway-issued credentials |
+| Done | Desktop shell · two-stream capture · live transcript · agent-run topic windows · diagrams · illustrations · web lookups · live translation · next-move suggestions · on-request answers with public-doc verification · meeting summary · saved, resumable sessions |
+| Next | faster agent updates · echo handling · lowering the meeting's volume under an interpretation |
+| Later | Approved internal knowledge (battlecards, compatibility matrices, demo catalog) · follow-up drafts (email, CRM) · retention policies · gateway-issued credentials |
 
 ## Known gaps
 
@@ -209,6 +212,9 @@ docs/                     Product spec, architecture, decisions, threat model
 - Translating your own voice into a real meeting app has not been confirmed end to end.
 - Development builds are ad-hoc signed, so macOS may ask for permissions again after a rebuild.
 - Diagrams and images cannot be enlarged; window positions and shortcuts are not configurable.
+- Requests that search the documentation take 15–25 seconds.
+- Palette requests work only while listening, not yet on a saved session.
+- After a rebuild of a development build, macOS may ask for your password to let the new build read its Keychain items (tokens and the session key).
 
 ## License
 

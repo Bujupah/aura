@@ -168,6 +168,20 @@ Finalized turns fan out to three consumers on separate channels: the note-taker,
 
 All three prompts forbid proposing or describing products: there is no approved knowledge to verify against yet (Milestones 7–8), so the advisor's job is discovery, not positioning.
 
+### On-request answers (built)
+
+The palette's requests — and any free-text question — go to the advisor as a named command with the meeting so far. One prompt documents every command; a test fails if a command exists that the prompt does not describe. Recaps of the meeting (commitments, environment, architecture, summary, thinking it through) never search and are never marked verified. Product questions (*Can Helix do this?*, *Verify that*, *Search BMC docs*, *Give me an answer*) search only the vendor's own domain.
+
+Verification is decided by `aura-core`, not the model: a source is kept only if a search in that request returned it, and an answer is **Verified** only if the model claims so *and* a kept source is on a trusted host (exact domain or subdomain; lookalikes and URLs carrying credentials are refused). Anything else the model called verified is downgraded to **Unverified**. This is the first, public-documentation tier of the claim verification described in [ai.md](ai.md#7-claim-verification); approved internal material is not connected.
+
+### Saved sessions (built)
+
+The desktop keeps the record of the meeting in progress — finalized turns and the latest notes — and writes it through `aura-storage` every 20 seconds and at stop, so a crash loses little. A session is one file: JSON sealed with AES-256-GCM under a random key that lives in the Keychain, written to a temporary name and swapped in whole. When the summary arrives it is stored with the session and its headline becomes the session's name; until then the session goes by its opening words.
+
+Continuing a session starts listening with that record as the starting point: turn numbering carries on per speaker, the meeting clock is set back so it reads on from the last turn, the note-taker's board is restored, and the advisor starts with the whole transcript. New material is saved into the same session.
+
+This is deliberately not the append-only event log of [ADR-004](../decisions/ADR-004-meeting-event-model.md): it stores state, not events, because that is what reading and resuming need. Replay for evaluation still needs the log.
+
 ### Live translation (built; outgoing direction untested)
 
 Each speaker's stream runs on one of two engines, chosen per session from the seller's settings:

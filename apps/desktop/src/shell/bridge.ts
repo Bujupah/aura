@@ -2,9 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
+  Ask,
   ListeningState,
   MeetingEvent,
   Provider,
+  SavedSession,
+  SessionMeta,
   Settings,
   ShellCommand,
   ShellState,
@@ -42,9 +45,18 @@ export interface ShellBridge {
   clearToken(provider: Provider): Promise<TokenStatus>;
   /** Rejects with a message when there is no meeting to review. */
   askWhatsMissing(): Promise<void>;
+  /** A palette request; `question` carries the seller's own words, if any. */
+  ask(ask: Ask, question?: string): Promise<void>;
   getSummary(): Promise<SummaryState>;
   subscribeSummary(listener: (state: SummaryState) => void): () => void;
   openSummary(): Promise<void>;
+  openSessions(): Promise<void>;
+  listSessions(): Promise<SessionMeta[]>;
+  getSession(id: string): Promise<SavedSession>;
+  deleteSession(id: string): Promise<void>;
+  /** Starts listening as a continuation of a saved session. */
+  continueSession(id: string): Promise<void>;
+  subscribeSessions(listener: () => void): () => void;
 }
 
 const STATE_EVENT = "shell://state";
@@ -55,7 +67,9 @@ const SUMMARY_EVENT = "summary://state";
 const TOPIC_PREFIX = "topic-";
 
 function windowKind(label: string | null): WindowKind {
-  if (label === "palette" || label === "tokens" || label === "summary") return label;
+  if (label === "palette" || label === "tokens" || label === "summary" || label === "sessions") {
+    return label;
+  }
   return label?.startsWith(TOPIC_PREFIX) ? "topic" : "overlay";
 }
 
@@ -95,6 +109,7 @@ function tauriBridge(): ShellBridge {
     setToken: (provider, value) => invoke<TokenStatus>("token_set", { provider, value }),
     clearToken: (provider) => invoke<TokenStatus>("token_clear", { provider }),
     askWhatsMissing: () => invoke<void>("meeting_whats_missing"),
+    ask: (ask, question) => invoke<void>("meeting_ask", { ask, question: question ?? null }),
     getSummary: () => invoke<SummaryState>("summary_get"),
     subscribeSummary(listener) {
       const unlisten = listen<SummaryState>(SUMMARY_EVENT, (event) => listener(event.payload));
@@ -103,6 +118,17 @@ function tauriBridge(): ShellBridge {
       };
     },
     openSummary: () => invoke<void>("summary_open"),
+    openSessions: () => invoke<void>("sessions_open"),
+    listSessions: () => invoke<SessionMeta[]>("sessions_list"),
+    getSession: (id) => invoke<SavedSession>("session_get", { id }),
+    deleteSession: (id) => invoke<void>("session_delete", { id }),
+    continueSession: (id) => invoke<void>("session_continue", { id }),
+    subscribeSessions(listener) {
+      const unlisten = listen("sessions://changed", () => listener());
+      return () => {
+        void unlisten.then((stop) => stop());
+      };
+    },
     getSettings: () => invoke<Settings>("settings_get"),
     subscribeSettings(listener) {
       const unlisten = listen<Settings>(SETTINGS_EVENT, (event) => listener(event.payload));
@@ -185,9 +211,51 @@ function browserBridge(): ShellBridge {
       window.setTimeout(() => emitMeeting({ type: "gaps", gaps: SAMPLE_GAPS }), 900);
       return Promise.resolve();
     },
+    ask(ask) {
+      if (listening.status !== "listening") {
+        return Promise.reject("Start listening first: there is no meeting to work from yet.");
+      }
+      emitMeeting({ type: "answerAsked" });
+      const verified = ask === "canHelix" || ask === "verify" || ask === "searchDocs";
+      window.setTimeout(
+        () =>
+          emitMeeting({
+            type: "answer",
+            answer: {
+              title: verified ? "OpenShift claim unverified" : "Current environment",
+              summary: verified
+                ? "I could not confirm “every OpenShift version” from the available BMC documentation."
+                : "AWS and OpenShift underpin the environment; ServiceNow handles incidents.",
+              points: verified
+                ? ["The documentation describes OpenShift discovery, not blanket version support."]
+                : ["Unknown where OpenShift runs.", "Unknown which platform hosts the CMDB."],
+              sayThis: verified
+                ? "Let me confirm the exact supported versions before I give you a definitive answer."
+                : "",
+              diagram: verified ? null : 'flowchart TD\nA["AWS"] --> C["CMDB"]\nB["OpenShift"] --> C',
+              verification: verified ? "unverified" : "notApplicable",
+              sources: verified ? [{ title: "BMC Documentation", url: "https://docs.bmc.com/docs/discovery" }] : [],
+            },
+          }),
+        900,
+      );
+      return Promise.resolve();
+    },
     getSummary: () => Promise.resolve(SAMPLE_SUMMARY),
     subscribeSummary: () => () => undefined,
     openSummary: () => Promise.resolve(),
+    openSessions: () => Promise.resolve(),
+    listSessions: () => Promise.resolve(sampleSessions.map(meta)),
+    getSession(id) {
+      const found = sampleSessions.find((session) => session.id === id);
+      return found ? Promise.resolve(found) : Promise.reject("That session no longer exists.");
+    },
+    deleteSession(id) {
+      sampleSessions = sampleSessions.filter((session) => session.id !== id);
+      return Promise.resolve();
+    },
+    continueSession: () => Promise.resolve(),
+    subscribeSessions: () => () => undefined,
     openTokens: () => Promise.resolve(),
     getTokenStatus: () => Promise.resolve(tokenStatus),
     setToken(provider, value) {
@@ -295,6 +363,19 @@ const SAMPLE_SUMMARY: SummaryState = {
   },
 };
 
+function meta(session: SavedSession): SessionMeta {
+  return {
+    id: session.id,
+    title: session.title,
+    startedAtMs: session.startedAtMs,
+    updatedAtMs: session.updatedAtMs,
+    turnCount: session.turns.length,
+    topicCount: session.topics.length,
+    durationMs: Math.max(0, ...session.turns.map((entry) => entry.endMs)),
+    hasSummary: session.summary !== null,
+  };
+}
+
 export const SAMPLE_TOPIC: Topic = {
   id: "cmdb-accuracy",
   title: "CMDB accuracy",
@@ -341,3 +422,32 @@ function turn(
 export function createShellBridge(): ShellBridge {
   return "__TAURI_INTERNALS__" in window ? tauriBridge() : browserBridge();
 }
+
+const DAY_MS = 86_400_000;
+
+let sampleSessions: SavedSession[] = [
+  {
+    id: "s-2",
+    title: "Discovery call: CMDB accuracy and alert noise",
+    startedAtMs: Date.now() - 3_600_000,
+    updatedAtMs: Date.now() - 1_800_000,
+    turns: [
+      { id: "customer-0", speaker: "customer", text: "Honestly, our CMDB gets outdated very quickly. We run on AWS and OpenShift.", startMs: 1_000, endMs: 7_000, isFinal: true, translation: null },
+      { id: "seller-0", speaker: "seller", text: "How are you currently discovering your infrastructure?", startMs: 9_000, endMs: 12_000, isFinal: true, translation: null },
+      { id: "customer-1", speaker: "customer", text: "Mostly spreadsheets, and a script someone wrote years ago.", startMs: 14_000, endMs: 18_000, isFinal: true, translation: null },
+    ],
+    topics: [SAMPLE_TOPIC],
+    summary: SAMPLE_SUMMARY.status === "ready" ? SAMPLE_SUMMARY.summary : null,
+  },
+  {
+    id: "s-1",
+    title: "Hello, can you hear me?",
+    startedAtMs: Date.now() - 3 * DAY_MS,
+    updatedAtMs: Date.now() - 3 * DAY_MS,
+    turns: [
+      { id: "customer-0", speaker: "customer", text: "Hello, can you hear me?", startMs: 500, endMs: 2_000, isFinal: true, translation: null },
+    ],
+    topics: [],
+    summary: null,
+  },
+];

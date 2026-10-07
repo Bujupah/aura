@@ -31,11 +31,30 @@ pub struct StructuredRequest<'a> {
     pub input: &'a str,
     pub schema_name: &'a str,
     pub schema: Value,
-    /// Lets the model search the web when it judges it necessary.
-    pub web_search: bool,
+    pub web_search: WebSearch,
     /// How hard the model should think: `"low"` while the meeting is live,
     /// `"medium"` when quality matters more than speed.
     pub effort: &'static str,
+}
+
+/// Whether, and where, the model may search the web.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebSearch {
+    Off,
+    /// Anywhere, when the model judges it necessary.
+    Open,
+    /// Only on these domains and their subdomains.
+    Domains(&'static [&'static str]),
+}
+
+impl From<bool> for WebSearch {
+    fn from(allowed: bool) -> Self {
+        if allowed {
+            Self::Open
+        } else {
+            Self::Off
+        }
+    }
 }
 
 pub struct Structured<T> {
@@ -78,8 +97,15 @@ impl ResponsesClient {
                 "schema": request.schema
             }},
         });
-        if request.web_search {
-            body["tools"] = json!([{ "type": "web_search" }]);
+        let tool = match request.web_search {
+            WebSearch::Off => None,
+            WebSearch::Open => Some(json!({ "type": "web_search" })),
+            WebSearch::Domains(domains) => {
+                Some(json!({ "type": "web_search", "filters": { "allowed_domains": domains } }))
+            }
+        };
+        if let Some(tool) = tool {
+            body["tools"] = json!([tool]);
             body["tool_choice"] = json!("auto");
             body["include"] = json!(["web_search_call.action.sources"]);
         }

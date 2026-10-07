@@ -2,9 +2,9 @@
 
 | Check | Result |
 | --- | --- |
-| `cargo test --workspace` | 101 passing (shell, turn assembly, arrangement validation, screen layout, pacing, resampling, level meter, GPT-Live and Live Translate protocols, note-taking agent, illustrator, settings, prompts) |
+| `cargo test --workspace` | 119 passing (shell, turn assembly, arrangement validation, screen layout, pacing, resampling, level meter, GPT-Live and Live Translate protocols, note-taking agent, illustrator, settings, prompts) |
 | `swift test` in `native/macos/AuraCapture` | 5 passing (format conversion to mono PCM16 at 24 and 16 kHz) |
-| `pnpm test` | 20 passing (palette, transcript ordering, note labels, translation summary) |
+| `pnpm test` | 26 passing (palette, transcript ordering, note labels, translation summary) |
 | GPT-Live with a real session | 12.7 s synthetic clip transcribed word-for-word at ~0.4 s lag ([details](architecture/ai.md#31-what-a-real-session-showed)) |
 | Two-stream session from audio fixtures, in the terminal probe and in the real app | Both speakers transcribed, labelled and ordered correctly; sessions closed with confirmed usage |
 | Overlay: listening state, meters, transcript, start/stop | Checked in a browser against the dev bridge |
@@ -22,6 +22,9 @@
 | "What are we missing?" | Scripted: five relevant gaps and a first question in about 7 s. In the real app the request expanded the overlay and returned in 7.2 s |
 | Meeting summary | Scripted: accurate sections, nothing invented, in about 8 s. In the real app, stopping a three-turn fixture session opened the summary window and filled it in 8.9 s. Copy-to-clipboard in the real window not exercised |
 | Outgoing translation with real settings | During that same run the seller stream used the saved settings (English to French): 79 characters heard, 87 said, speech played into the virtual microphone. Whether a meeting app receives it is still unconfirmed |
+| Saved sessions | Storage: round trip, wrong key and tampering refused, ids confined to the store, no readable text in the file. In the real app a fixture meeting was saved encrypted (checked for plaintext: none), named by the AI from its summary, and then continued: new turns carried on the numbering (`customer-2`, `seller-1`) and the clock, and the summary was rewritten over the whole meeting. The sessions window was checked in a browser on sample data, not clicked through in the real app |
+| On-request answers | Scripted, live: commitments in 2.3 s; architecture diagram with unknowns in 8.8 s; a blanket OpenShift claim came back **Unverified** with a correction to say (25 s); a competitor comparison cited public pages, noted the customer was not unhappy with the tools and did not suggest replacing them (14.8 s). In the real app one request was asked mid-meeting and answered in 2.1 s. The other commands share the same path but were not each run |
+| Listening mark | Animated bars replace the word "Listening"; checked in a browser. Holds still when the system asks for reduced motion |
 | Shell windows: expand, palette, hide all, restore; frontmost app unchanged | Observed on real windows |
 | `Aura.app` bundle builds with the capture library linked and the microphone usage string | Observed |
 

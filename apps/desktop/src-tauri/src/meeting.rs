@@ -5,15 +5,16 @@
 use std::sync::{Mutex, PoisonError};
 
 use aura_session::{
-    AudioInput, Credentials, FailureReason, Incoming, ListeningState, MeetingSession, SessionEnd,
-    SessionEvent, SessionOptions, Translation,
+    AudioInput, Credentials, FailureReason, Incoming, ListeningState, MeetingSession, Resume,
+    SessionEnd, SessionEvent, SessionOptions, Translation,
 };
+use aura_storage::SavedSession;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc;
 
 use crate::settings::{IncomingTranslation, Settings, SettingsStore};
 use crate::tokens::{self, Provider};
-use crate::{summary, topics, tray};
+use crate::{sessions, summary, topics, tray};
 
 pub const EVENT: &str = "meeting://event";
 
@@ -49,7 +50,17 @@ pub fn meeting_state(meeting: State<'_, Meeting>) -> ListeningState {
 
 #[tauri::command]
 pub async fn meeting_start(app: AppHandle) {
-    start(&app).await;
+    start(&app, None).await;
+}
+
+/// Starts listening as a continuation of `saved`. Refused while a meeting
+/// is already under way.
+pub async fn resume(app: &AppHandle, saved: SavedSession) -> Result<(), String> {
+    if !matches!(app.state::<Meeting>().state(), ListeningState::Idle | ListeningState::Failed { .. }) {
+        return Err("Stop the current meeting before continuing another one.".into());
+    }
+    start(app, Some(saved)).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -72,25 +83,41 @@ pub fn toggle(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         match app.state::<Meeting>().state() {
-            ListeningState::Idle | ListeningState::Failed { .. } => start(&app).await,
+            ListeningState::Idle | ListeningState::Failed { .. } => start(&app, None).await,
             ListeningState::Starting | ListeningState::Listening => stop(&app).await,
         }
     });
 }
 
-async fn start(app: &AppHandle) {
+async fn start(app: &AppHandle, saved: Option<SavedSession>) {
     let meeting = app.state::<Meeting>();
     let mut session = meeting.session.lock().await;
     if session.is_some() {
         return;
     }
     set_state(app, ListeningState::Starting);
-    // A new session starts with a clean desk.
-    topics::reset(app);
+    // A new session starts with a clean desk; a continued one gets back the
+    // transcript and notes it ended with.
+    match &saved {
+        None => topics::reset(app),
+        Some(saved) => {
+            for turn in &saved.turns {
+                emit(app, &SessionEvent::Turn { turn: turn.clone() });
+            }
+            topics::restore(app, saved.topics.clone());
+            emit(app, &SessionEvent::Topics { topics: saved.topics.clone() });
+        }
+    }
 
     let settings = app.state::<SettingsStore>().get();
     let (credentials, options) = match (credentials(), options(&settings)) {
-        (Ok(credentials), Ok(options)) => (credentials, options),
+        (Ok(credentials), Ok(mut options)) => {
+            options.resume = saved.as_ref().map(|saved| Resume {
+                turns: saved.turns.clone(),
+                topics: saved.topics.clone(),
+            });
+            (credentials, options)
+        }
         (Err(message), _) => return fail(app, FailureReason::Credential, message),
         (_, Err(message)) => return fail(app, FailureReason::AudioOutput, message),
     };
@@ -98,8 +125,10 @@ async fn start(app: &AppHandle) {
         event = "listening_starting",
         web_access = options.web_access,
         illustrations = options.illustrations,
-        translating = options.translation.is_some()
+        translating = options.translation.is_some(),
+        continuing = options.resume.is_some()
     );
+    sessions::begin(app, saved);
     let (events, received) = mpsc::unbounded_channel();
     tauri::async_runtime::spawn(relay(app.clone(), received));
 
@@ -113,7 +142,32 @@ async fn stop(app: &AppHandle) {
     let ended = end_session(app).await;
     set_state(app, ListeningState::Idle);
     if let Some(ended) = ended {
-        summary::prepare(app, ended.transcript);
+        let session_id = sessions::finish(app);
+        summary::prepare(app, ended.transcript, session_id);
+    }
+}
+
+/// Sends one of the palette's requests to the advisor. Does nothing useful
+/// when Aura is not listening, and says so.
+#[tauri::command]
+pub async fn meeting_ask(app: AppHandle, ask: aura_session::Ask, question: Option<String>) -> Result<(), String> {
+    let question = question.map(|text| text.trim().to_owned()).filter(|text| !text.is_empty());
+    match app.state::<Meeting>().session.lock().await.as_ref() {
+        Some(session) => {
+            tracing::info!(event = "request_asked", command = ?ask);
+            session.ask(ask, question);
+            crate::shell::dispatch(
+                &app,
+                aura_core::shell::ShellCommand::SetOverlayMode {
+                    mode: aura_core::shell::OverlayMode::Expanded,
+                },
+            );
+            if let Err(error) = app.emit(EVENT, serde_json::json!({ "type": "answerAsked" })) {
+                tracing::warn!(event = "meeting_emit_failed", %error);
+            }
+            Ok(())
+        }
+        None => Err("Start listening first: there is no meeting to work from yet.".into()),
     }
 }
 
@@ -166,17 +220,27 @@ async fn relay(app: AppHandle, mut received: mpsc::UnboundedReceiver<SessionEven
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
                         let _ = end_session(&app).await;
+                        // What was said before the failure is still worth keeping.
+                        sessions::finish(&app);
                     });
                 }
             }
             SessionEvent::Topics { topics } => {
+                sessions::record_topics(&app, &topics);
                 topics::update(&app, topics.clone());
                 emit(&app, &SessionEvent::Topics { topics });
             }
             // The picture stays in the core; windows fetch it when the
             // following topics event says it is ready.
             SessionEvent::TopicImage { topic_id, png } => topics::store_image(&app, topic_id, png),
-            event => emit(&app, &event),
+            event => {
+                if let SessionEvent::Turn { turn } = &event {
+                    if turn.is_final {
+                        sessions::record_turn(&app, turn);
+                    }
+                }
+                emit(&app, &event);
+            }
         }
     }
 }
@@ -266,6 +330,7 @@ fn options(settings: &Settings) -> Result<SessionOptions, String> {
         web_access: settings.web_access,
         illustrations: settings.illustrations,
         translation,
+        resume: None,
     })
 }
 

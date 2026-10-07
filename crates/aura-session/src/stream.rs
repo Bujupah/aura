@@ -79,6 +79,8 @@ pub struct SpeakerStream {
     speaker: Speaker,
     engine: Engine,
     pacer: SharedPacer,
+    /// Numbers new turns after those of the meeting being continued.
+    assembler: TurnAssembler,
 }
 
 pub enum Connected {
@@ -87,13 +89,15 @@ pub enum Connected {
 }
 
 impl SpeakerStream {
-    pub fn new(speaker: Speaker, engine: Engine) -> Self {
+    /// `earlier` holds the turns of a meeting being continued, if any.
+    pub fn new(speaker: Speaker, engine: Engine, earlier: &[Turn]) -> Self {
         let rate = engine.sample_rate() as usize;
         let tick = rate / 1000 * TICK.as_millis() as usize;
         Self {
             speaker,
             engine,
             pacer: Arc::new(Mutex::new(Pacer::new(tick, rate * BUFFER_SECONDS))),
+            assembler: TurnAssembler::resuming(speaker, earlier),
         }
     }
 
@@ -130,7 +134,7 @@ impl SpeakerStream {
     ) -> Option<f64> {
         let speaker = self.speaker;
         let turns = TurnSink {
-            assembler: TurnAssembler::new(speaker),
+            assembler: self.assembler,
             events: events.clone(),
             final_turns,
         };

@@ -15,3 +15,7 @@ Five data classes with independent retention: transient audio, transcript, struc
 ## Consequences
 - Bugs in transcription cannot be reproduced from audio; synthetic fixtures and event replay carry that load.
 - The audit log must be designed to be useful without containing content.
+
+## Update · 2026-10-07
+
+Transcript, notes and summary are now saved per meeting, on by default, encrypted with AES-256-GCM under a Keychain-held key (`crates/aura-storage`). The seller can switch saving off and delete any session. Still to do from this decision: independent retention periods per data class, automatic expiry, and organization policy that can only tighten the defaults. Storage is one encrypted file per session rather than SQLite; revisit when sessions need to be searched or when the event log of ADR-004 is built.

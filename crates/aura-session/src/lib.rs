@@ -18,13 +18,13 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use aura_core::advice::{Advice, Gaps};
+use aura_core::advice::{Advice, Answer, Gaps};
 use aura_core::summary::MeetingSummary;
 use aura_core::topics::Topic;
 use aura_core::transcript::{Speaker, Turn};
 use aura_intel::{
-    track_advice, track_topics, Abilities, AdvisorRequest, AdvisorUpdate, Control, Illustrator,
-    ResponsesClient, Update,
+    track_advice, track_topics, Abilities, AdvisorRequest, AdvisorSetup, AdvisorUpdate, Control,
+    Earlier, Illustrator, ResponsesClient, Update,
 };
 use aura_live::LiveError;
 use aura_translate::{TranslateConfig, TranslateError};
@@ -36,6 +36,7 @@ use crate::input::{Input, Levels};
 use crate::stream::{Engine, SpeakerStream, SpeechSink, TurnText};
 
 pub use crate::stream::Credentials;
+pub use aura_intel::Ask;
 
 /// Where a session's audio comes from.
 #[derive(Debug, Clone)]
@@ -58,7 +59,20 @@ pub struct SessionOptions {
     pub illustrations: bool,
     /// Live translation between the seller's language and the meeting's.
     pub translation: Option<Translation>,
+    /// A saved meeting to continue. Its turns and notes become the starting
+    /// point, and new turns carry on its numbering and its clock.
+    pub resume: Option<Resume>,
 }
+
+/// The state of a saved meeting that is being continued.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Resume {
+    pub turns: Vec<Turn>,
+    pub topics: Vec<Topic>,
+}
+
+/// A continued meeting picks its clock up this long after its last turn.
+const RESUME_GAP_MS: u64 = 2_000;
 
 /// How the meeting should be interpreted.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +143,8 @@ pub enum SessionEvent {
     Advice { advice: Option<Advice> },
     /// The answer to "what are we missing?", or `None` if it failed.
     Gaps { gaps: Option<Gaps> },
+    /// The reply to a palette request, or `None` if it failed.
+    Answer { answer: Option<Answer> },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -206,8 +222,9 @@ impl MeetingSession {
         events: mpsc::UnboundedSender<SessionEvent>,
     ) -> Result<Self, SessionError> {
         let (seller_engine, customer_engine) = engines(options.translation.as_ref())?;
-        let seller = SpeakerStream::new(Speaker::Seller, seller_engine);
-        let customer = SpeakerStream::new(Speaker::Customer, customer_engine);
+        let resume = options.resume.clone().unwrap_or_default();
+        let seller = SpeakerStream::new(Speaker::Seller, seller_engine, &resume.turns);
+        let customer = SpeakerStream::new(Speaker::Customer, customer_engine, &resume.turns);
 
         // Connect before opening the microphone: if the service is down the
         // user is never recorded for nothing.
@@ -236,7 +253,7 @@ impl MeetingSession {
         let (final_turns, mut finalized) = mpsc::unbounded_channel::<Turn>();
         let (turns_to_notes, turns_for_notes) = mpsc::unbounded_channel();
         let (turns_to_advisor, turns_for_advisor) = mpsc::unbounded_channel();
-        let transcript = Arc::new(Mutex::new(Vec::new()));
+        let transcript = Arc::new(Mutex::new(resume.turns.clone()));
         let fan_out = {
             let transcript = transcript.clone();
             tokio::spawn(async move {
@@ -262,7 +279,11 @@ impl MeetingSession {
                 };
                 let notes = {
                     let events = events.clone();
-                    tokio::spawn(track_topics(fast.clone(), abilities, turns_for_notes, control_for_notes, move |update| {
+                    let earlier = Earlier {
+                        topics: resume.topics.clone(),
+                        turns: resume.turns.clone(),
+                    };
+                    tokio::spawn(track_topics(fast.clone(), abilities, earlier, turns_for_notes, control_for_notes, move |update| {
                         let _ = events.send(match update {
                             Update::Topics(topics) => {
                                 // The advisor reads the notes as they stand.
@@ -275,10 +296,14 @@ impl MeetingSession {
                 };
                 let advisor = {
                     let events = events.clone();
-                    tokio::spawn(track_advice(
+                    let setup = AdvisorSetup {
                         fast,
                         deep,
                         language,
+                        earlier: resume.turns.clone(),
+                    };
+                    tokio::spawn(track_advice(
+                        setup,
                         turns_for_advisor,
                         topics_seen,
                         requests_for_advisor,
@@ -286,6 +311,7 @@ impl MeetingSession {
                             let _ = events.send(match update {
                                 AdvisorUpdate::Advice(advice) => SessionEvent::Advice { advice },
                                 AdvisorUpdate::Gaps(gaps) => SessionEvent::Gaps { gaps },
+                                AdvisorUpdate::Answer(answer) => SessionEvent::Answer { answer },
                             });
                         },
                     ))
@@ -298,8 +324,17 @@ impl MeetingSession {
             }
         };
 
-        // One clock for both streams, so their turns interleave correctly.
-        let clock = Instant::now();
+        // One clock for both streams, so their turns interleave correctly. A
+        // continued meeting's clock is set back so that it reads on from
+        // where the saved one ended.
+        let already_elapsed = resume
+            .turns
+            .iter()
+            .map(|turn| turn.end_ms)
+            .max()
+            .map_or(Duration::ZERO, |last| Duration::from_millis(last + RESUME_GAP_MS));
+        let now = Instant::now();
+        let clock = now.checked_sub(already_elapsed).unwrap_or(now);
         let streams = vec![
             tokio::spawn(seller.run(seller_connection, clock, events.clone(), final_turns.clone(), stopped.clone())),
             tokio::spawn(customer.run(customer_connection, clock, events.clone(), final_turns, stopped.clone())),
@@ -333,6 +368,12 @@ impl MeetingSession {
     /// arrives as [`SessionEvent::Gaps`].
     pub fn ask_whats_missing(&self) {
         let _ = self.advisor_requests.send(AdvisorRequest::WhatsMissing);
+    }
+
+    /// Asks the advisor for one of the palette's on-request answers. The
+    /// reply arrives as [`SessionEvent::Answer`].
+    pub fn ask(&self, ask: Ask, question: Option<String>) {
+        let _ = self.advisor_requests.send(AdvisorRequest::Ask { ask, question });
     }
 
     /// Stops audio first, then closes both realtime sessions and waits for

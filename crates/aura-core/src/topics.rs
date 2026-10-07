@@ -144,6 +144,11 @@ pub struct TopicBoard {
 }
 
 impl TopicBoard {
+    /// A board continuing from the notes of a saved meeting.
+    pub fn restore(topics: Vec<Topic>) -> Self {
+        Self { topics }
+    }
+
     pub fn topics(&self) -> &[Topic] {
         &self.topics
     }

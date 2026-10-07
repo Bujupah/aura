@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ShellBridge } from "../shell/bridge";
-import type { Advice, Gaps, ListeningState, Turn } from "../shell/types";
+import type { Advice, Answer, Gaps, ListeningState, Turn } from "../shell/types";
 import { upsertTurn } from "./transcript";
 
 export interface Levels {
@@ -41,12 +41,21 @@ export type GapsState =
   | { readonly status: "ready"; readonly gaps: Gaps }
   | { readonly status: "failed" };
 
+/** What a palette request has come back with. */
+export type AnswerState =
+  | { readonly status: "idle" }
+  | { readonly status: "asking" }
+  | { readonly status: "ready"; readonly answer: Answer }
+  | { readonly status: "failed" };
+
 export interface MeetingFeed {
   readonly levels: Levels;
   readonly turns: readonly Turn[];
   readonly advice: Advice | null;
   readonly gaps: GapsState;
   dismissGaps(): void;
+  readonly answer: AnswerState;
+  dismissAnswer(): void;
 }
 
 /** Everything the overlay shows about the meeting. A new session starts clean. */
@@ -55,6 +64,7 @@ export function useMeetingFeed(bridge: ShellBridge): MeetingFeed {
   const [turns, setTurns] = useState<readonly Turn[]>([]);
   const [advice, setAdvice] = useState<Advice | null>(null);
   const [gaps, setGaps] = useState<GapsState>({ status: "idle" });
+  const [answer, setAnswer] = useState<AnswerState>({ status: "idle" });
   useEffect(
     () =>
       bridge.subscribeMeeting((event) => {
@@ -68,6 +78,12 @@ export function useMeetingFeed(bridge: ShellBridge): MeetingFeed {
           case "advice":
             setAdvice(event.advice);
             break;
+          case "answerAsked":
+            setAnswer({ status: "asking" });
+            break;
+          case "answer":
+            setAnswer(event.answer ? { status: "ready", answer: event.answer } : { status: "failed" });
+            break;
           case "gapsAsked":
             setGaps({ status: "asking" });
             break;
@@ -78,6 +94,7 @@ export function useMeetingFeed(bridge: ShellBridge): MeetingFeed {
             if (event.state.status === "starting") {
               setTurns([]);
               setGaps({ status: "idle" });
+              setAnswer({ status: "idle" });
             }
             if (event.state.status !== "listening") {
               setLevels(SILENT);
@@ -89,5 +106,13 @@ export function useMeetingFeed(bridge: ShellBridge): MeetingFeed {
       }),
     [bridge],
   );
-  return { levels, turns, advice, gaps, dismissGaps: () => setGaps({ status: "idle" }) };
+  return {
+    levels,
+    turns,
+    advice,
+    gaps,
+    dismissGaps: () => setGaps({ status: "idle" }),
+    answer,
+    dismissAnswer: () => setAnswer({ status: "idle" }),
+  };
 }

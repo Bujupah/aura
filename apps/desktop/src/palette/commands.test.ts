@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ShellState } from "../shell/types";
-import { filterCommands, isRunnable, nextRunnable, paletteCommands } from "./commands";
+import { commandsFor, filterCommands, isRunnable, nextRunnable, paletteCommands } from "./commands";
 
 const state: ShellState = {
   overlayMode: "collapsed",
@@ -27,11 +27,31 @@ describe("paletteCommands", () => {
     expect(first("listening")).toBe("Stop listening");
   });
 
-  it("offers only the intelligence that is actually built", () => {
+  it("offers every request the advisor can answer", () => {
     const aura = paletteCommands(state, "idle").filter((c) => c.group === "Aura");
-    const runnable = aura.filter(isRunnable).map((c) => c.title);
-    expect(runnable).toEqual(["What are we missing?"]);
-    expect(aura.length).toBeGreaterThan(runnable.length);
+    expect(aura.every(isRunnable)).toBe(true);
+    expect(aura.map((c) => c.title)).toContain("Verify that.");
+    expect(aura[0]?.title).toBe("What are we missing?");
+  });
+});
+
+describe("commandsFor", () => {
+  const commands = paletteCommands(state, "idle");
+
+  it("offers to put free text to Aura as a question", () => {
+    const offered = commandsFor(commands, "do they have a budget?");
+    expect(offered).toHaveLength(1);
+    expect(offered[0]?.action).toEqual({ kind: "ask", ask: "question", question: "do they have a budget?" });
+  });
+
+  it("lists matching commands before the question", () => {
+    const offered = commandsFor(commands, "verify");
+    expect(offered.map((c) => c.title)).toEqual(["Verify that.", "Ask Aura: “verify”"]);
+  });
+
+  it("does not offer a question for a blank or tiny query", () => {
+    expect(commandsFor(commands, "")).toHaveLength(commands.length);
+    expect(commandsFor(commands, "ex").some((c) => c.id === "ask-question")).toBe(false);
   });
 });
 
@@ -63,9 +83,7 @@ describe("nextRunnable", () => {
     expect(nextRunnable(commands, first, -1)).toBe(last);
   });
 
-  it("reports -1 when nothing is runnable", () => {
-    const unavailable = commands.filter((c) => !isRunnable(c));
-    expect(nextRunnable(unavailable, 0, 1)).toBe(-1);
+  it("reports -1 when there is nothing to select", () => {
     expect(nextRunnable([], -1, 1)).toBe(-1);
   });
 });

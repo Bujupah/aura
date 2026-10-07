@@ -59,6 +59,21 @@ impl TurnAssembler {
         }
     }
 
+    /// Continues a saved meeting: new turns are numbered after the ones this
+    /// speaker already has, so ids stay unique across the whole meeting.
+    pub fn resuming(speaker: Speaker, earlier: &[Turn]) -> Self {
+        let next_index = earlier
+            .iter()
+            .filter(|turn| turn.speaker == speaker)
+            .filter_map(|turn| turn.id.rsplit('-').next()?.parse::<u64>().ok())
+            .max()
+            .map_or(0, |highest| highest + 1);
+        Self {
+            next_index,
+            ..Self::new(speaker)
+        }
+    }
+
     pub fn speaker(&self) -> Speaker {
         self.speaker
     }
@@ -269,5 +284,23 @@ mod tests {
         assert_eq!(late.id, closed.id);
         assert!(late.is_final);
         assert_eq!(late.translation.as_deref(), Some("Merci de vous joindre."));
+    }
+
+    #[test]
+    fn a_resumed_meeting_numbers_new_turns_after_the_saved_ones() {
+        let mut first = TurnAssembler::new(Speaker::Customer);
+        first.push(" One.", 0, 100);
+        let one = first.finish().unwrap();
+        first.push(" Two.", 5_000, 5_100);
+        let two = first.finish().unwrap();
+        let seller_turn = Turn { id: "seller-7".into(), speaker: Speaker::Seller, ..one.clone() };
+        let saved = [one, two, seller_turn];
+
+        let mut customer = TurnAssembler::resuming(Speaker::Customer, &saved);
+        assert_eq!(customer.push(" Three.", 60_000, 60_100)[0].id, "customer-2");
+        let mut seller = TurnAssembler::resuming(Speaker::Seller, &saved);
+        assert_eq!(seller.push(" Hello.", 60_000, 60_100)[0].id, "seller-8");
+        let mut fresh = TurnAssembler::resuming(Speaker::Seller, &[]);
+        assert_eq!(fresh.push(" Hello.", 0, 100)[0].id, "seller-0");
     }
 }

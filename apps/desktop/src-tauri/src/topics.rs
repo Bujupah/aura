@@ -119,6 +119,20 @@ pub fn reset(app: &AppHandle) {
     apply(app);
 }
 
+/// Puts back the notes of a meeting being continued. Windows that are
+/// already open for the same topics are reused rather than closed and
+/// reopened.
+pub fn restore(app: &AppHandle, topics: Vec<Topic>) {
+    {
+        let state = app.state::<TopicWindows>();
+        let mut inner = state.lock();
+        inner.topics = topics;
+        inner.dismissed.clear();
+        inner.images.clear();
+    }
+    apply(app);
+}
+
 /// Must run on the main thread.
 pub fn sync_visibility(app: &AppHandle, shell: ShellState) {
     let labels: Vec<String> = app.state::<TopicWindows>().lock().open.keys().map(|id| label(id)).collect();

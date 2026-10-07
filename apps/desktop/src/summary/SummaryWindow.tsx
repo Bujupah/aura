@@ -54,9 +54,9 @@ export function SummaryWindow({ bridge }: { bridge: ShellBridge }) {
 
   return (
     <main className="summary">
-      <Body summary={state.summary} />
+      <SummaryBody summary={state.summary} />
       <footer className="summary-footer">
-        <span>Not saved anywhere. Copy what you want to keep before the next meeting replaces it.</span>
+        <span>Kept with the session when Save Sessions is on. Find it later under Sessions.</span>
         <button type="button" className="action" onClick={() => void copy(state.markdown)}>
           {copied ? "Copied" : "Copy as Markdown"}
         </button>
@@ -65,7 +65,7 @@ export function SummaryWindow({ bridge }: { bridge: ShellBridge }) {
   );
 }
 
-function Body({ summary }: { summary: MeetingSummary }) {
+export function SummaryBody({ summary }: { summary: MeetingSummary }) {
   return (
     <article className="summary-body">
       <header>

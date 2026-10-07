@@ -1,6 +1,7 @@
 mod commands;
 mod languages;
 mod meeting;
+mod sessions;
 mod settings;
 mod shell;
 mod shortcuts;
@@ -54,6 +55,7 @@ pub fn run() {
         .manage(topics::TopicWindows::default())
         .manage(settings::SettingsStore::default())
         .manage(summary::SummaryStore::default())
+        .manage(sessions::Sessions::default())
         .invoke_handler(tauri::generate_handler![
             commands::shell_state,
             commands::shell_shortcuts,
@@ -63,8 +65,14 @@ pub fn run() {
             meeting::meeting_start,
             meeting::meeting_stop,
             meeting::meeting_whats_missing,
+            meeting::meeting_ask,
             summary::summary_get,
             summary::summary_open,
+            sessions::sessions_list,
+            sessions::session_get,
+            sessions::session_delete,
+            sessions::session_continue,
+            sessions::sessions_open,
             topics::topics_current,
             topics::topic_dismiss,
             topics::topic_image,

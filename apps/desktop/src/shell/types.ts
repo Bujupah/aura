@@ -27,7 +27,7 @@ export interface ShortcutBinding {
   readonly registered: boolean;
 }
 
-export type WindowKind = "overlay" | "palette" | "topic" | "gallery" | "tokens" | "summary";
+export type WindowKind = "overlay" | "palette" | "topic" | "gallery" | "tokens" | "summary" | "sessions";
 
 // Mirrors `aura_session` and `aura_core::transcript`.
 
@@ -96,7 +96,10 @@ export type MeetingEvent =
   | { readonly type: "advice"; readonly advice: Advice | null }
   /** The seller asked "what are we missing?"; the answer follows as `gaps`. */
   | { readonly type: "gapsAsked" }
-  | { readonly type: "gaps"; readonly gaps: Gaps | null };
+  | { readonly type: "gaps"; readonly gaps: Gaps | null }
+  /** The seller asked for something from the palette; `answer` follows. */
+  | { readonly type: "answerAsked" }
+  | { readonly type: "answer"; readonly answer: Answer | null };
 
 /** Mirrors `settings::Settings`. Changed from the menu bar. */
 export interface Settings {
@@ -158,3 +161,54 @@ export type SummaryState =
   | { readonly status: "preparing" }
   | { readonly status: "ready"; readonly summary: MeetingSummary; readonly markdown: string }
   | { readonly status: "failed"; readonly message: string };
+
+// Mirrors `aura_storage`.
+
+export interface SessionMeta {
+  readonly id: string;
+  readonly title: string;
+  readonly startedAtMs: number;
+  readonly updatedAtMs: number;
+  readonly turnCount: number;
+  readonly topicCount: number;
+  readonly durationMs: number;
+  readonly hasSummary: boolean;
+}
+
+export interface SavedSession {
+  readonly id: string;
+  readonly title: string;
+  readonly startedAtMs: number;
+  readonly updatedAtMs: number;
+  readonly turns: readonly Turn[];
+  readonly topics: readonly Topic[];
+  readonly summary: MeetingSummary | null;
+}
+
+/** A palette request. Mirrors `aura_intel::Ask`. */
+export type Ask =
+  | "askNext"
+  | "explain"
+  | "promised"
+  | "summarize"
+  | "environment"
+  | "architecture"
+  | "think"
+  | "demo"
+  | "canHelix"
+  | "verify"
+  | "answer"
+  | "searchDocs"
+  | "compare"
+  | "question";
+
+/** The reply to a palette request. Mirrors `aura_core::advice::Answer`. */
+export interface Answer {
+  readonly title: string;
+  readonly summary: string;
+  readonly points: readonly string[];
+  readonly sayThis: string;
+  readonly diagram: string | null;
+  readonly verification: "verified" | "unverified" | "notApplicable";
+  readonly sources: readonly Source[];
+}

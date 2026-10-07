@@ -34,6 +34,9 @@ pub struct Settings {
     pub translate_my_voice: bool,
     pub web_access: bool,
     pub illustrations: bool,
+    /// Keep each meeting's transcript, notes and summary, encrypted, so it
+    /// can be reopened and continued. Audio is never kept either way.
+    pub save_sessions: bool,
 }
 
 impl Default for Settings {
@@ -45,6 +48,7 @@ impl Default for Settings {
             translate_my_voice: false,
             web_access: true,
             illustrations: true,
+            save_sessions: true,
         }
     }
 }

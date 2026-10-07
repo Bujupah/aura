@@ -139,3 +139,26 @@ public func auraFindOutputDevice(
     buffer[bytes.count] = 0
     return Int32(bytes.count)
 }
+
+/// Writes the UID of the system's default output device into `buffer`.
+/// Returns its length, or 0 if it cannot be determined.
+@_cdecl("aura_default_output_device")
+public func auraDefaultOutputDevice(_ buffer: UnsafeMutablePointer<CChar>?, _ capacity: Int32) -> Int32 {
+    guard let buffer, capacity > 0, let uid = OutputDevices.defaultOutputUID() else { return 0 }
+    let bytes = Array(uid.utf8)
+    guard bytes.count < Int(capacity) else { return 0 }
+    for (index, byte) in bytes.enumerated() { buffer[index] = CChar(bitPattern: byte) }
+    buffer[bytes.count] = 0
+    return Int32(bytes.count)
+}
+
+/// Plays a short tone into the device and listens on the same device's
+/// input, to check that audio sent to a virtual microphone comes out of it.
+/// Blocks for about a second and a half. Returns the peak level heard, from
+/// 0 to 1, or a negative code: -1 microphone permission is missing, -2 the
+/// device has no input side or is gone, -3 the test could not run.
+@_cdecl("aura_loopback_test")
+public func auraLoopbackTest(_ deviceUID: UnsafePointer<CChar>?) -> Float {
+    guard let deviceUID else { return -2 }
+    return LoopbackProbe.run(deviceUID: String(cString: deviceUID))
+}

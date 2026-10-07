@@ -131,11 +131,24 @@ Open **menu bar → Translation** and choose:
 
 Choices are saved and apply from the next session. Your interpreted words appear under each thing you say, so you can see what the meeting heard.
 
-For the others to hear you, the meeting app must use a virtual microphone. Install the free [BlackHole](https://existential.audio/blackhole/) driver and select **BlackHole 2ch** as the microphone in your meeting app:
+For the others to hear you, the meeting app must use a virtual microphone. Install the free [BlackHole](https://existential.audio/blackhole/) driver and restart your Mac:
 
 ```bash
 brew install --cask blackhole-2ch
 ```
+
+BlackHole is a silent pipe: whatever is played into it comes out as a microphone, and you hear none of it. Set it in exactly one place:
+
+| Where | Setting | Value |
+| --- | --- | --- |
+| Your meeting app (Meet, Zoom, Teams) | **Microphone** | BlackHole 2ch |
+| Your meeting app | **Speaker** | Your headphones |
+| macOS → System Settings → Sound | **Output** | Your headphones or speakers — **never BlackHole** |
+| macOS → System Settings → Sound | **Input** | Your real microphone |
+
+If the Mac's own output is BlackHole you hear nothing at all and the meeting hears itself; Aura refuses to start translating in that state and says so. **Menu bar → Translation → Test Virtual Microphone** plays a short tone into BlackHole and reports whether it arrives.
+
+To hear the meeting translated, choose **Show it and speak it to me**; the text-only option is silent. Switch the meeting app back to your normal microphone when you are not translating, or the others hear nothing.
 
 Expect about three seconds before interpreted speech starts, and expect it to fall further behind in long turns. There is no voice picker: the model keeps the speaker's own voice, imperfectly.
 

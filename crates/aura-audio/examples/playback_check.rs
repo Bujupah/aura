@@ -6,11 +6,19 @@
 
 #[cfg(target_os = "macos")]
 fn main() {
-    use aura_audio::playback::{find_output_device, Playback};
+    use aura_audio::playback::{default_output_device, find_output_device, Playback};
 
-    match find_output_device("BlackHole") {
+    let virtual_microphone = find_output_device("BlackHole");
+    match &virtual_microphone {
         Some(uid) => println!("virtual microphone: found ({uid})"),
         None => println!("virtual microphone: none installed"),
+    }
+    match (default_output_device(), &virtual_microphone) {
+        (Some(output), Some(uid)) if output == *uid => println!(
+            "Mac sound output: IS the virtual microphone — you will hear nothing; choose your headphones or speakers"
+        ),
+        (Some(_), _) => println!("Mac sound output: a real device (good)"),
+        (None, _) => println!("Mac sound output: unknown"),
     }
     match Playback::open(None, 24_000, 0.0) {
         Ok(playback) => {

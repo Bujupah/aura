@@ -59,6 +59,19 @@ enum OutputDevices {
         all().first { $0.name.localizedCaseInsensitiveContains(fragment) }?.uid
     }
 
+    /// UID of the device the system plays sound on by default.
+    static func defaultOutputUID() -> String? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var device = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device)
+        guard status == noErr, device != 0 else { return nil }
+        return string(device, kAudioDevicePropertyDeviceUID)
+    }
+
     static func id(forUID uid: String) -> AudioDeviceID? {
         all().first { $0.uid == uid }?.id
     }

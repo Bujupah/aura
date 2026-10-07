@@ -26,6 +26,8 @@ const FIXTURES_ENV: &str = "AURA_AUDIO_FIXTURES";
 pub struct Meeting {
     state: Mutex<ListeningState>,
     session: tokio::sync::Mutex<Option<MeetingSession>>,
+    /// What the last virtual-microphone test found, for the menu to show.
+    microphone_test: Mutex<Option<String>>,
 }
 
 impl Default for Meeting {
@@ -33,6 +35,7 @@ impl Default for Meeting {
         Self {
             state: Mutex::new(ListeningState::Idle),
             session: tokio::sync::Mutex::new(None),
+            microphone_test: Mutex::new(None),
         }
     }
 }
@@ -40,6 +43,14 @@ impl Default for Meeting {
 impl Meeting {
     pub fn state(&self) -> ListeningState {
         self.state.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    pub fn microphone_test(&self) -> Option<String> {
+        self.microphone_test.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    pub fn set_microphone_test(&self, result: String) {
+        *self.microphone_test.lock().unwrap_or_else(PoisonError::into_inner) = Some(result);
     }
 }
 
@@ -304,6 +315,17 @@ const VIRTUAL_MICROPHONE: &str = "BlackHole";
 
 fn options(settings: &Settings) -> Result<SessionOptions, String> {
     let translation = if settings.translating() {
+        // Sound sent to the virtual microphone is silent to the seller and
+        // audible to the meeting. If the whole Mac plays into it, the seller
+        // hears nothing and the participants hear themselves.
+        if sound_output_is_virtual_microphone() {
+            return Err(
+                "Your Mac's sound output is set to BlackHole, so you would hear nothing and the meeting \
+                 would hear itself. In System Settings → Sound → Output choose your headphones or \
+                 speakers. BlackHole belongs only in your meeting app, as its microphone. Then start again."
+                    .into(),
+            );
+        }
         let outgoing_device_uid = if settings.translate_my_voice {
             Some(virtual_microphone().ok_or(
                 "To let the meeting hear your translated voice, Aura needs the BlackHole virtual \
@@ -342,6 +364,50 @@ fn virtual_microphone() -> Option<String> {
 #[cfg(not(target_os = "macos"))]
 fn virtual_microphone() -> Option<String> {
     None
+}
+
+#[cfg(target_os = "macos")]
+fn sound_output_is_virtual_microphone() -> bool {
+    match (aura_audio::playback::default_output_device(), virtual_microphone()) {
+        (Some(output), Some(microphone)) => output == microphone,
+        _ => false,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn sound_output_is_virtual_microphone() -> bool {
+    false
+}
+
+/// Plays a tone into the virtual microphone and listens for it there, then
+/// says in plain words what was found. Takes about two seconds.
+pub async fn test_virtual_microphone() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        use aura_audio::playback::{loopback_test, Loopback};
+        let Some(device) = virtual_microphone() else {
+            return "Not installed. Install BlackHole 2ch, then restart your Mac.".into();
+        };
+        let output_misrouted = sound_output_is_virtual_microphone();
+        let result = tauri::async_runtime::spawn_blocking(move || loopback_test(&device)).await;
+        let verdict = match result {
+            Ok(Loopback::Heard(_)) => "Working: sound Aura sends reaches the virtual microphone.",
+            Ok(Loopback::Silent) => "Not working: Aura played a tone into BlackHole and nothing came out of it.",
+            Ok(Loopback::NoPermission) => {
+                "Can't test: allow Aura to use the microphone in System Settings → Privacy & Security → Microphone."
+            }
+            Ok(Loopback::NoDevice) => "Not working: BlackHole has no microphone side on this Mac. Try reinstalling it.",
+            Ok(Loopback::Failed) | Err(_) => "The test could not run.",
+        };
+        tracing::info!(event = "virtual_microphone_tested", result = ?result.ok(), output_misrouted);
+        if output_misrouted {
+            format!("{verdict} But your Mac's sound output is BlackHole: switch it to your headphones.")
+        } else {
+            verdict.to_owned()
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    "Virtual microphones are only supported on macOS.".into()
 }
 
 fn audio_input() -> AudioInput {

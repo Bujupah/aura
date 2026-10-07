@@ -2,7 +2,7 @@
 
 | Check | Result |
 | --- | --- |
-| `cargo test --workspace` | 119 passing (shell, turn assembly, arrangement validation, screen layout, pacing, resampling, level meter, GPT-Live and Live Translate protocols, note-taking agent, illustrator, settings, prompts) |
+| `cargo test --workspace` | 120 passing (shell, turn assembly, arrangement validation, screen layout, pacing, resampling, level meter, GPT-Live and Live Translate protocols, note-taking agent, illustrator, settings, prompts) |
 | `swift test` in `native/macos/AuraCapture` | 5 passing (format conversion to mono PCM16 at 24 and 16 kHz) |
 | `pnpm test` | 26 passing (palette, transcript ordering, note labels, translation summary) |
 | GPT-Live with a real session | 12.7 s synthetic clip transcribed word-for-word at ~0.4 s lag ([details](architecture/ai.md#31-what-a-real-session-showed)) |
@@ -25,6 +25,7 @@
 | Saved sessions | Storage: round trip, wrong key and tampering refused, ids confined to the store, no readable text in the file. In the real app a fixture meeting was saved encrypted (checked for plaintext: none), named by the AI from its summary, and then continued: new turns carried on the numbering (`customer-2`, `seller-1`) and the clock, and the summary was rewritten over the whole meeting. The sessions window was checked in a browser on sample data, not clicked through in the real app |
 | On-request answers | Scripted, live: commitments in 2.3 s; architecture diagram with unknowns in 8.8 s; a blanket OpenShift claim came back **Unverified** with a correction to say (25 s); a competitor comparison cited public pages, noted the customer was not unhappy with the tools and did not suggest replacing them (14.8 s). In the real app one request was asked mid-meeting and answered in 2.1 s. The other commands share the same path but were not each run |
 | Listening mark | Animated bars replace the word "Listening"; checked in a browser. Holds still when the system asks for reduced motion |
+| Virtual microphone | In the real app the self-test played a tone at half scale into BlackHole and heard it back at 0.49: sound Aura sends does reach the virtual microphone. With the Mac's sound output set to BlackHole, starting translation was refused with instructions. Whether a meeting app then transmits it is still unconfirmed |
 | Shell windows: expand, palette, hide all, restore; frontmost app unchanged | Observed on real windows |
 | `Aura.app` bundle builds with the capture library linked and the microphone usage string | Observed |
 

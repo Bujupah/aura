@@ -52,6 +52,18 @@ fn on_menu_event(app: &AppHandle, id: &str) {
         "click_through" => ShellCommand::ToggleClickThrough,
         "topics" => ShellCommand::ToggleTopics,
         "palette" => ShellCommand::TogglePalette,
+        "test_microphone" => {
+            let app = app.clone();
+            app.state::<Meeting>().set_microphone_test("Testing…".into());
+            refresh(&app);
+            tauri::async_runtime::spawn(async move {
+                let result = meeting::test_virtual_microphone().await;
+                app.state::<Meeting>().set_microphone_test(result);
+                let handle = app.clone();
+                let _ = app.run_on_main_thread(move || refresh(&handle));
+            });
+            return;
+        }
         "tokens" => return crate::tokens::open_window(app),
         "summary" => return crate::summary::open_window(app),
         "sessions" => return crate::sessions::open_window(app),
@@ -143,18 +155,31 @@ fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &check("incoming:off", "Leave as spoken", true, settings.incoming_translation == IncomingTranslation::Off)?,
         &check(
             "incoming:text",
-            "Show it in my language",
+            "Show it in my language (text only)",
             true,
             settings.incoming_translation == IncomingTranslation::Text,
         )?,
         &check(
             "incoming:voice",
-            "Show and speak it in my language",
+            "Show it and speak it to me",
             true,
             settings.incoming_translation == IncomingTranslation::Voice,
         )?,
         &separator()?,
         &check("outgoing", "Translate my voice for the meeting", true, settings.translate_my_voice)?,
+        &item("test_microphone", "Test Virtual Microphone", true)?,
+        &item(
+            "label:microphone_test",
+            // Menus are single-line; the outcome is worded to fit.
+            app.state::<Meeting>()
+                .microphone_test()
+                .as_deref()
+                .unwrap_or("Plays a short tone into BlackHole and checks it arrives"),
+            false,
+        )?,
+        &separator()?,
+        &item("label:setup_1", "Setup: meeting app microphone = BlackHole 2ch", false)?,
+        &item("label:setup_2", "Setup: Mac sound output = your headphones, never BlackHole", false)?,
         &separator()?,
         &item(
             "label:translation_note",

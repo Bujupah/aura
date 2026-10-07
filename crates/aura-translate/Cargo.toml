@@ -1,0 +1,20 @@
+[package]
+name = "aura-translate"
+description = "Client for Gemini Live Translate: continuous speech in one language in, speech and text in another out."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+aura-live = { path = "../aura-live" }
+base64 = "0.22"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["net", "time"] }
+tokio-tungstenite = { version = "0.29", features = ["native-tls"] }
+
+[dev-dependencies]
+dotenvy = "0.15"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }

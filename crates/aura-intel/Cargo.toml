@@ -1,0 +1,22 @@
+[package]
+name = "aura-intel"
+description = "Turns transcript into structured meeting notes using a text model. Model output is validated before anything accepts it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+aura-core = { path = "../aura-core" }
+aura-live = { path = "../aura-live" }
+base64 = "0.22"
+reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { version = "1", features = ["sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+dotenvy = "0.15"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

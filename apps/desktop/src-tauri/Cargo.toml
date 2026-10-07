@@ -1,0 +1,34 @@
+[package]
+name = "aura-desktop"
+description = "Aura desktop shell (Tauri)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "aura_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+aura-core = { path = "../../../crates/aura-core" }
+aura-live = { path = "../../../crates/aura-live" }
+aura-session = { path = "../../../crates/aura-session" }
+aura-audio = { path = "../../../crates/aura-audio" }
+aura-translate = { path = "../../../crates/aura-translate" }
+dotenvy = "0.15"
+tokio = { version = "1", features = ["sync"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri-plugin-global-shortcut = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

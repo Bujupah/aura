@@ -1,0 +1,8 @@
+# The Swift capture library (native/macos/AuraCapture) is linked statically,
+# but the Swift runtime it uses ships with macOS. Every binary that links
+# aura-audio needs to find it at run time.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rpath,/usr/lib/swift"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rpath,/usr/lib/swift"]

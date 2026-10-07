@@ -1,0 +1,13 @@
+[package]
+name = "aura-audio"
+description = "Audio capture binding and stream conditioning. Audio lives in memory only; nothing here writes it to disk."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[target.'cfg(target_os = "macos")'.build-dependencies]
+swift-rs = { version = "1", features = ["build"] }

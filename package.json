@@ -1,0 +1,12 @@
+{
+  "name": "aura",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "dev": "pnpm --filter @aura/desktop tauri dev",
+    "build": "pnpm --filter @aura/desktop tauri build",
+    "dev:web": "pnpm --filter @aura/desktop dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test && cargo test --workspace"
+  }
+}

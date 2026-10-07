@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Aura's own windows may listen to shell events and drag themselves. Nothing else.",
+  "windows": ["overlay", "palette", "topic-*"],
+  "permissions": ["core:event:default", "core:window:allow-start-dragging"]
+}
